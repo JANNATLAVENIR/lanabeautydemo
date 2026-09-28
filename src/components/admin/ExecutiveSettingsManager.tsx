@@ -83,6 +83,20 @@ export function ExecutiveSettingsManager({
   );
 
   // 2. WhatsApp Concierge
+  const [whatsappEnabled, setWhatsappEnabled] = useState<boolean>(() => {
+    try {
+      const cached = localStorage.getItem('lana_site_settings_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed.whatsappEnabled !== undefined) return Boolean(parsed.whatsappEnabled);
+        if (parsed.contactInfo?.whatsappEnabled !== undefined) return Boolean(parsed.contactInfo.whatsappEnabled);
+      }
+    } catch {}
+    if (homepageSettings?.whatsappEnabled !== undefined) return Boolean(homepageSettings.whatsappEnabled);
+    if (homepageSettings?.contactInfo?.whatsappEnabled !== undefined) return Boolean(homepageSettings.contactInfo.whatsappEnabled);
+    return true;
+  });
+
   const [whatsappNumber, setWhatsappNumber] = useState(() => {
     try {
       const cached = localStorage.getItem('lana_site_settings_cache');
@@ -92,7 +106,7 @@ export function ExecutiveSettingsManager({
         if (parsed.contactInfo?.whatsappNumber) return parsed.contactInfo.whatsappNumber;
       }
     } catch {}
-    return homepageSettings?.whatsappNumber || homepageSettings?.contactInfo?.whatsappNumber || '';
+    return homepageSettings?.whatsappNumber || homepageSettings?.contactInfo?.whatsappNumber || '+252619756855';
   });
 
   useEffect(() => {
@@ -101,6 +115,7 @@ export function ExecutiveSettingsManager({
       if (cached) {
         const parsed = JSON.parse(cached);
         if (parsed.whatsappNumber && !whatsappNumber) setWhatsappNumber(parsed.whatsappNumber);
+        if (parsed.whatsappEnabled !== undefined) setWhatsappEnabled(parsed.whatsappEnabled);
       }
     } catch {}
   }, []);
@@ -162,6 +177,7 @@ export function ExecutiveSettingsManager({
   // Sync state when props update
   useEffect(() => {
     if (homepageSettings) {
+      if (homepageSettings.whatsappEnabled !== undefined) setWhatsappEnabled(homepageSettings.whatsappEnabled);
       if (homepageSettings.whatsappNumber) setWhatsappNumber(homepageSettings.whatsappNumber);
       if (homepageSettings.whatsappGreeting) setWhatsappGreeting(homepageSettings.whatsappGreeting);
       if (homepageSettings.whatsappFloatingActive !== undefined) setWhatsappFloatingActive(homepageSettings.whatsappFloatingActive);
@@ -303,8 +319,14 @@ export function ExecutiveSettingsManager({
 
     const formattedSnapchat = snapchat.trim() ? formatSnapchatUrl(snapchat.trim()) : '';
 
+    const isWaReallyActive = Boolean(whatsappEnabled && whatsappNumber.trim());
+    const finalWaNumber = isWaReallyActive ? whatsappNumber.trim() : '';
+    const finalWaSocial = isWaReallyActive 
+      ? (whatsappSocial.trim() || `https://wa.me/${cleanWaNumber(whatsappNumber)}`)
+      : '';
+
     const socialLinks: SocialLinksSettings = {
-      whatsapp: (whatsappSocial.trim() || (whatsappNumber ? `https://wa.me/${cleanWaNumber(whatsappNumber)}` : '')),
+      whatsapp: finalWaSocial,
       instagram: instagram.trim(),
       tiktok: tiktok.trim(),
       facebook: facebook.trim(),
@@ -316,9 +338,10 @@ export function ExecutiveSettingsManager({
 
     const contactInfo: StoreContactSettings = {
       storeName: storeName.trim(),
-      whatsappNumber: whatsappNumber.trim(),
+      whatsappNumber: finalWaNumber,
       whatsappGreeting: whatsappGreeting.trim(),
-      whatsappFloatingActive,
+      whatsappFloatingActive: isWaReallyActive && whatsappFloatingActive,
+      whatsappEnabled: isWaReallyActive,
       contactEmail: contactEmail.trim(),
       contactPhone: contactPhone.trim(),
       address: address.trim(),
@@ -339,9 +362,10 @@ export function ExecutiveSettingsManager({
       storeLogo: storeLogo.trim(),
       storeTagline: storeTagline.trim(),
       currencySymbol,
-      whatsappNumber: whatsappNumber.trim(),
+      whatsappNumber: finalWaNumber,
       whatsappGreeting: whatsappGreeting.trim(),
-      whatsappFloatingActive,
+      whatsappFloatingActive: isWaReallyActive && whatsappFloatingActive,
+      whatsappEnabled: isWaReallyActive,
       socialLinks,
       contactInfo,
       shippingPolicies,
@@ -764,32 +788,125 @@ export function ExecutiveSettingsManager({
                   <span className="text-[9.5px] uppercase font-bold tracking-[0.25em] text-neutral-400 block mb-1">
                     SECTION 02
                   </span>
-                  <h3 className="text-xl font-serif text-neutral-900 font-normal">
-                    VIP Concierge Hotline &amp; WhatsApp Integration
-                  </h3>
-                  <p className="text-xs text-neutral-500 font-sans mt-1">
-                    Geli lambarka WhatsApp-ka rasmiga ah ee macaamiisha VIP-da ah kula soo xiriirayaan si toos ah, fariinta hor-u-dhaca ah, iyo xakameynta widget-ka sabaynaya.
-                  </p>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-xl font-serif text-neutral-900 font-normal">
+                        VIP Concierge Hotline &amp; WhatsApp Integration
+                      </h3>
+                      <p className="text-xs text-neutral-500 font-sans mt-1">
+                        Halkan waxaad ka xakamayn kartaa WhatsApp-ka: waad shidi kartaa (Add), waadna damin kartaa (Remove) si uu gabi ahaanba uga baxo websayts-ka.
+                      </p>
+                    </div>
+
+                    {/* Master Switch */}
+                    <div className="flex items-center gap-3 bg-white border p-2 px-3 border-neutral-200">
+                      <div className="text-right">
+                        <span className="block text-[8.5px] uppercase font-bold tracking-wider text-neutral-400">
+                          Website Status
+                        </span>
+                        <span className={`text-[11px] font-bold uppercase tracking-wider ${whatsappEnabled && whatsappNumber.trim() ? 'text-emerald-700' : 'text-rose-700'}`}>
+                          {whatsappEnabled && whatsappNumber.trim() ? '● ACTIVE (SHIDAN)' : '○ REMOVED (DEMSAN)'}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setWhatsappEnabled(!whatsappEnabled)}
+                        className={`px-3 py-1.5 text-[10px] uppercase font-bold tracking-wider transition-colors cursor-pointer ${
+                          whatsappEnabled 
+                            ? 'bg-neutral-900 text-white hover:bg-neutral-800' 
+                            : 'bg-emerald-800 text-white hover:bg-emerald-900'
+                        }`}
+                      >
+                        {whatsappEnabled ? 'Turn OFF / Demi' : 'Turn ON / Shid'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
+
+                {/* Banner Indicator */}
+                {whatsappEnabled && whatsappNumber.trim() ? (
+                  <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div>
+                      <span className="font-bold uppercase tracking-wider text-[11px] block text-emerald-900">
+                        ✓ WhatsApp waa shidan yahay (Active on Website)
+                      </span>
+                      <p className="text-emerald-700 text-[11px] mt-0.5">
+                        Macaamiishu waxay ku arki karaan batoonka WhatsApp-ka Footer-ka, Gaariga, Menu-ga, iyo Badeecadaha.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={`https://wa.me/${cleanWaNumber(whatsappNumber)}?text=${encodeURIComponent(whatsappGreeting)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-3 py-1.5 bg-emerald-800 text-white hover:bg-emerald-900 text-[10px] uppercase font-bold tracking-wider cursor-pointer whitespace-nowrap inline-flex items-center gap-1"
+                      >
+                        <ExternalLink size={11} />
+                        <span>Tijaabi WhatsApp-ka</span>
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => setWhatsappEnabled(false)}
+                        className="px-3 py-1.5 border border-emerald-700 text-emerald-800 hover:bg-emerald-100 text-[10px] uppercase font-bold tracking-wider cursor-pointer whitespace-nowrap"
+                      >
+                        Demi (Disable)
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-rose-50 border border-rose-200 text-rose-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div>
+                      <span className="font-bold uppercase tracking-wider text-[11px] block text-rose-900">
+                        ✕ WhatsApp waa laga saaray websayts-ka (Disabled / Hidden)
+                      </span>
+                      <p className="text-rose-700 text-[11px] mt-0.5">
+                        Wax WhatsApp ah kama muuqdaan websayts-ka (Footer, Menu, Cart, PDP) ilaa aad dib u shido.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setWhatsappEnabled(true)}
+                      className="px-3 py-1.5 bg-neutral-900 text-white text-[10px] uppercase font-bold tracking-wider cursor-pointer whitespace-nowrap hover:bg-neutral-800"
+                    >
+                      Dib u Shid (Re-Enable)
+                    </button>
+                  </div>
+                )}
 
                 <div className="space-y-5 text-xs font-sans">
                   <div>
-                    <label className="block text-neutral-700 font-bold uppercase tracking-wider text-[10px] mb-1.5">
-                      Primary WhatsApp Phone Number (With Country Code) *
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-neutral-700 font-bold uppercase tracking-wider text-[10px]">
+                        Primary WhatsApp Phone Number (With Country Code)
+                      </label>
+                      {whatsappNumber.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setWhatsappNumber('');
+                            setWhatsappEnabled(false);
+                          }}
+                          className="text-[10px] text-rose-600 hover:text-rose-800 uppercase font-bold cursor-pointer"
+                        >
+                          Remove / Tirtir Lambarka
+                        </button>
+                      )}
+                    </div>
                     <div className="relative">
                       <input
                         type="text"
                         value={whatsappNumber}
-                        onChange={(e) => setWhatsappNumber(e.target.value)}
-                        placeholder="Geli lambarka WhatsApp-ka oo wata koodhka dalka..."
+                        onChange={(e) => {
+                          setWhatsappNumber(e.target.value);
+                          if (!whatsappEnabled && e.target.value.trim()) setWhatsappEnabled(true);
+                        }}
+                        placeholder="e.g. +252619756855"
                         className="w-full pl-10 pr-4 py-3 bg-neutral-50 border border-neutral-200 focus:bg-white focus:border-neutral-900 font-mono text-sm text-neutral-900"
-                        required
                       />
                       <Phone size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" />
                     </div>
                     <p className="text-[11px] text-neutral-400 mt-1 font-mono">
-                      Geli lambarka oo wata koodhka dalka adigoo aan dhex dhigin meelo banaan
+                      Geli lambarka oo wata koodhka dalka (tusaale: +252619756855). Haddii aad banaan uga tagto, WhatsApp kama muuqanayo websayts-ka.
                     </p>
                   </div>
 
@@ -843,7 +960,7 @@ export function ExecutiveSettingsManager({
                     Official Social Channels &amp; Global Footprint
                   </h3>
                   <p className="text-xs text-neutral-500 font-sans mt-1">
-                    Ku xir link-yada rasmiga ah ee baraha bulshada ee Maison LANA. Waxay si toos ah uga muuqan doonaan Footer-ka iyo Product Sharing bar-ka.
+                    Ku xir link-yada rasmiga ah ee baraha bulshada ee Maison LANA. <strong>Haddii aad banaan uga tagto ama aad taabato &quot;Remove&quot;, app-kaas gabi ahaanba kama muuqan doono websayts-ka.</strong>
                   </p>
                 </div>
 
@@ -853,13 +970,27 @@ export function ExecutiveSettingsManager({
                     <div className="flex items-center justify-between">
                       <label className="font-bold uppercase tracking-wider text-neutral-800 text-[10.5px] flex items-center gap-2">
                         <Instagram size={14} className="text-neutral-700" />
-                        <span>Instagram Handle / URL</span>
+                        <span>Instagram URL</span>
                       </label>
-                      {instagram && (
-                        <a href={instagram} target="_blank" rel="noreferrer" className="text-neutral-400 hover:text-neutral-900 flex items-center gap-1 text-[10px]">
-                          Test <ExternalLink size={10} />
-                        </a>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 ${instagram.trim() ? 'bg-emerald-100 text-emerald-850' : 'bg-neutral-200 text-neutral-500'}`}>
+                          {instagram.trim() ? '● Active' : '○ Hidden'}
+                        </span>
+                        {instagram.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => setInstagram('')}
+                            className="text-[10px] text-rose-600 hover:text-rose-800 uppercase font-bold cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        )}
+                        {instagram.trim() && (
+                          <a href={instagram} target="_blank" rel="noreferrer" className="text-neutral-400 hover:text-neutral-900 flex items-center gap-1 text-[10px]">
+                            Test <ExternalLink size={10} />
+                          </a>
+                        )}
+                      </div>
                     </div>
                     <input
                       type="url"
@@ -875,13 +1006,27 @@ export function ExecutiveSettingsManager({
                     <div className="flex items-center justify-between">
                       <label className="font-bold uppercase tracking-wider text-neutral-800 text-[10.5px] flex items-center gap-2">
                         <span className="font-mono font-black text-xs text-neutral-900">TT</span>
-                        <span>TikTok Profile URL</span>
+                        <span>TikTok URL</span>
                       </label>
-                      {tiktok && (
-                        <a href={tiktok} target="_blank" rel="noreferrer" className="text-neutral-400 hover:text-neutral-900 flex items-center gap-1 text-[10px]">
-                          Test <ExternalLink size={10} />
-                        </a>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 ${tiktok.trim() ? 'bg-emerald-100 text-emerald-850' : 'bg-neutral-200 text-neutral-500'}`}>
+                          {tiktok.trim() ? '● Active' : '○ Hidden'}
+                        </span>
+                        {tiktok.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => setTiktok('')}
+                            className="text-[10px] text-rose-600 hover:text-rose-800 uppercase font-bold cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        )}
+                        {tiktok.trim() && (
+                          <a href={tiktok} target="_blank" rel="noreferrer" className="text-neutral-400 hover:text-neutral-900 flex items-center gap-1 text-[10px]">
+                            Test <ExternalLink size={10} />
+                          </a>
+                        )}
+                      </div>
                     </div>
                     <input
                       type="url"
@@ -897,13 +1042,27 @@ export function ExecutiveSettingsManager({
                     <div className="flex items-center justify-between">
                       <label className="font-bold uppercase tracking-wider text-neutral-800 text-[10.5px] flex items-center gap-2">
                         <span className="font-mono font-bold text-[10px] text-neutral-900 border border-neutral-400 px-1">SC</span>
-                        <span>Snapchat Handle / URL</span>
+                        <span>Snapchat URL</span>
                       </label>
-                      {snapchat && (
-                        <a href={snapchat.startsWith('http') ? snapchat : `https://snapchat.com/add/${snapchat.replace(/^@+/, '')}`} target="_blank" rel="noreferrer" className="text-neutral-400 hover:text-neutral-900 flex items-center gap-1 text-[10px]">
-                          Test <ExternalLink size={10} />
-                        </a>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 ${snapchat.trim() ? 'bg-emerald-100 text-emerald-850' : 'bg-neutral-200 text-neutral-500'}`}>
+                          {snapchat.trim() ? '● Active' : '○ Hidden'}
+                        </span>
+                        {snapchat.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => setSnapchat('')}
+                            className="text-[10px] text-rose-600 hover:text-rose-800 uppercase font-bold cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        )}
+                        {snapchat.trim() && (
+                          <a href={snapchat.startsWith('http') ? snapchat : `https://snapchat.com/add/${snapchat.replace(/^@+/, '')}`} target="_blank" rel="noreferrer" className="text-neutral-400 hover:text-neutral-900 flex items-center gap-1 text-[10px]">
+                            Test <ExternalLink size={10} />
+                          </a>
+                        )}
+                      </div>
                     </div>
                     <input
                       type="text"
@@ -919,13 +1078,27 @@ export function ExecutiveSettingsManager({
                     <div className="flex items-center justify-between">
                       <label className="font-bold uppercase tracking-wider text-neutral-800 text-[10.5px] flex items-center gap-2">
                         <Youtube size={14} className="text-neutral-700" />
-                        <span>YouTube Atelier Channel</span>
+                        <span>YouTube URL</span>
                       </label>
-                      {youtube && (
-                        <a href={youtube} target="_blank" rel="noreferrer" className="text-neutral-400 hover:text-neutral-900 flex items-center gap-1 text-[10px]">
-                          Test <ExternalLink size={10} />
-                        </a>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 ${youtube.trim() ? 'bg-emerald-100 text-emerald-850' : 'bg-neutral-200 text-neutral-500'}`}>
+                          {youtube.trim() ? '● Active' : '○ Hidden'}
+                        </span>
+                        {youtube.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => setYoutube('')}
+                            className="text-[10px] text-rose-600 hover:text-rose-800 uppercase font-bold cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        )}
+                        {youtube.trim() && (
+                          <a href={youtube} target="_blank" rel="noreferrer" className="text-neutral-400 hover:text-neutral-900 flex items-center gap-1 text-[10px]">
+                            Test <ExternalLink size={10} />
+                          </a>
+                        )}
+                      </div>
                     </div>
                     <input
                       type="url"
@@ -941,13 +1114,27 @@ export function ExecutiveSettingsManager({
                     <div className="flex items-center justify-between">
                       <label className="font-bold uppercase tracking-wider text-neutral-800 text-[10.5px] flex items-center gap-2">
                         <Facebook size={14} className="text-neutral-700" />
-                        <span>Facebook Official Page</span>
+                        <span>Facebook URL</span>
                       </label>
-                      {facebook && (
-                        <a href={facebook} target="_blank" rel="noreferrer" className="text-neutral-400 hover:text-neutral-900 flex items-center gap-1 text-[10px]">
-                          Test <ExternalLink size={10} />
-                        </a>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 ${facebook.trim() ? 'bg-emerald-100 text-emerald-850' : 'bg-neutral-200 text-neutral-500'}`}>
+                          {facebook.trim() ? '● Active' : '○ Hidden'}
+                        </span>
+                        {facebook.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => setFacebook('')}
+                            className="text-[10px] text-rose-600 hover:text-rose-800 uppercase font-bold cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        )}
+                        {facebook.trim() && (
+                          <a href={facebook} target="_blank" rel="noreferrer" className="text-neutral-400 hover:text-neutral-900 flex items-center gap-1 text-[10px]">
+                            Test <ExternalLink size={10} />
+                          </a>
+                        )}
+                      </div>
                     </div>
                     <input
                       type="url"
@@ -963,13 +1150,27 @@ export function ExecutiveSettingsManager({
                     <div className="flex items-center justify-between">
                       <label className="font-bold uppercase tracking-wider text-neutral-800 text-[10.5px] flex items-center gap-2">
                         <Twitter size={14} className="text-neutral-700" />
-                        <span>X / Twitter Handle</span>
+                        <span>X / Twitter URL</span>
                       </label>
-                      {twitter && (
-                        <a href={twitter} target="_blank" rel="noreferrer" className="text-neutral-400 hover:text-neutral-900 flex items-center gap-1 text-[10px]">
-                          Test <ExternalLink size={10} />
-                        </a>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 ${twitter.trim() ? 'bg-emerald-100 text-emerald-850' : 'bg-neutral-200 text-neutral-500'}`}>
+                          {twitter.trim() ? '● Active' : '○ Hidden'}
+                        </span>
+                        {twitter.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => setTwitter('')}
+                            className="text-[10px] text-rose-600 hover:text-rose-800 uppercase font-bold cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        )}
+                        {twitter.trim() && (
+                          <a href={twitter} target="_blank" rel="noreferrer" className="text-neutral-400 hover:text-neutral-900 flex items-center gap-1 text-[10px]">
+                            Test <ExternalLink size={10} />
+                          </a>
+                        )}
+                      </div>
                     </div>
                     <input
                       type="url"

@@ -362,15 +362,18 @@ export const AccountPortal: React.FC<AccountPortalProps> = ({
             </button>
             {(() => {
               let targetPhone = '';
+              let isWaEnabled = true;
               try {
                 const cached = localStorage.getItem('lana_site_settings_cache');
                 if (cached) {
                   const parsed = JSON.parse(cached);
+                  if (parsed.whatsappEnabled === false) isWaEnabled = false;
+                  if (parsed.contactInfo?.whatsappEnabled === false) isWaEnabled = false;
                   const p = parsed.whatsappNumber || parsed.contactInfo?.whatsappNumber || parsed.contactInfo?.contactPhone;
                   if (p) targetPhone = String(p).replace(/[^0-9]/g, '');
                 }
               } catch {}
-              if (!targetPhone) return null;
+              if (!isWaEnabled || !targetPhone) return null;
               return (
                 <a
                   href={`https://wa.me/${targetPhone}?text=${encodeURIComponent('Salam Maison LANA Concierge, I would like assistance.')}`}
@@ -669,15 +672,24 @@ export const AccountPortal: React.FC<AccountPortalProps> = ({
                   </p>
                   {(() => {
                     let targetPhone = '';
+                    let isWaEnabled = true;
                     try {
                       const cached = localStorage.getItem('lana_site_settings_cache');
                       if (cached) {
                         const parsed = JSON.parse(cached);
+                        if (parsed.whatsappEnabled === false) isWaEnabled = false;
+                        if (parsed.contactInfo?.whatsappEnabled === false) isWaEnabled = false;
                         const p = parsed.whatsappNumber || parsed.contactInfo?.whatsappNumber || parsed.contactInfo?.contactPhone;
                         if (p) targetPhone = String(p).replace(/[^0-9]/g, '');
                       }
                     } catch {}
-                    if (!targetPhone) return null;
+                    if (!isWaEnabled || !targetPhone) {
+                      return (
+                        <p className="text-xs text-neutral-400 font-sans italic">
+                          Online WhatsApp Concierge is currently offline. Please email or visit our flagship atelier.
+                        </p>
+                      );
+                    }
                     return (
                       <a
                         href={`https://wa.me/${targetPhone}?text=${encodeURIComponent('Salam Maison LANA Concierge, I would like assistance.')}`}

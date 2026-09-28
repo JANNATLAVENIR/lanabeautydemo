@@ -376,7 +376,7 @@ async function startServer() {
   }
 
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json({ limit: "60mb" }));
   app.use(express.urlencoded({ limit: "60mb", extended: true }));
@@ -675,27 +675,7 @@ async function startServer() {
   }
 
 function sanitizePhoneNumbers(obj: any): any {
-  if (!obj || typeof obj !== 'object') return obj;
-  const legacyPresets = ["252619756855", "252611234567", "966501234567", "966114567890", "966551234567", "966509876543", "966500000000"];
-  const clean = { ...obj };
-
-  const isPreset = (num: any) => {
-    if (!num || typeof num !== 'string') return false;
-    const digits = num.replace(/[^0-9]/g, '');
-    return legacyPresets.includes(digits);
-  };
-
-  if (isPreset(clean.whatsappNumber)) clean.whatsappNumber = "";
-  if (clean.contactInfo) {
-    clean.contactInfo = { ...clean.contactInfo };
-    if (isPreset(clean.contactInfo.whatsappNumber)) clean.contactInfo.whatsappNumber = "";
-    if (isPreset(clean.contactInfo.contactPhone)) clean.contactInfo.contactPhone = "";
-  }
-  if (clean.socialLinks) {
-    clean.socialLinks = { ...clean.socialLinks };
-    if (clean.socialLinks.whatsapp && isPreset(clean.socialLinks.whatsapp)) clean.socialLinks.whatsapp = "";
-  }
-  return clean;
+  return obj;
 }
 
   // Homepage Settings & Hero Banners Control

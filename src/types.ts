@@ -135,6 +135,7 @@ export interface StoreContactSettings {
   whatsappNumber?: string;
   whatsappGreeting?: string;
   whatsappFloatingActive?: boolean;
+  whatsappEnabled?: boolean;
   contactEmail?: string;
   contactPhone?: string;
   address?: string;
@@ -175,6 +176,7 @@ export interface HomepageSettings {
   whatsappNumber?: string;
   whatsappGreeting?: string;
   whatsappFloatingActive?: boolean;
+  whatsappEnabled?: boolean;
   socialLinks?: SocialLinksSettings;
   contactInfo?: StoreContactSettings;
 }

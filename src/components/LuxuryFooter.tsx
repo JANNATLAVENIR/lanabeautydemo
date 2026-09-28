@@ -47,6 +47,11 @@ export const LuxuryFooter: React.FC<LuxuryFooterProps> = ({
   const [dynamicContact, setDynamicContact] = useState<StoreContactSettings | undefined>(initialContactInfo);
 
   useEffect(() => {
+    if (initialSocialLinks) setDynamicSocial(initialSocialLinks);
+    if (initialContactInfo) setDynamicContact(initialContactInfo);
+  }, [initialSocialLinks, initialContactInfo]);
+
+  useEffect(() => {
     // Load initial from cache if not provided
     try {
       const cached = localStorage.getItem('lana_site_settings_cache');
@@ -66,6 +71,21 @@ export const LuxuryFooter: React.FC<LuxuryFooterProps> = ({
     window.addEventListener('lana_settings_updated', handleSettingsUpdated);
     return () => window.removeEventListener('lana_settings_updated', handleSettingsUpdated);
   }, []);
+
+  const isWaActive = (() => {
+    if (dynamicContact?.whatsappEnabled === false) return false;
+    const phone = (dynamicContact?.whatsappNumber || initialContactInfo?.whatsappNumber || '').replace(/[^0-9]/g, '');
+    return Boolean(phone);
+  })();
+
+  const cleanWaNum = (() => {
+    const raw = dynamicContact?.whatsappNumber || initialContactInfo?.whatsappNumber || '';
+    return String(raw).replace(/[^0-9]/g, '');
+  })();
+
+  const waUrl = isWaActive && cleanWaNum 
+    ? (dynamicSocial?.whatsapp?.trim() || `https://wa.me/${cleanWaNum}?text=${encodeURIComponent('Salam Maison LANA Concierge, I would like assistance.')}`)
+    : '';
 
   const [currentUser, setCurrentUser] = useState<any>(() => {
     try {
@@ -287,13 +307,25 @@ export const LuxuryFooter: React.FC<LuxuryFooterProps> = ({
               {t('Customer Care')}
             </h4>
             <div className="space-y-2.5 text-[13px] text-neutral-600 font-light flex flex-col items-start w-full">
-              <button 
-                onClick={() => onOpenConcierge ? onOpenConcierge() : onNavigateToView('stories')} 
-                className="hover:text-black hover:underline transition-colors cursor-pointer text-left flex items-center gap-1 w-full justify-between pr-2 border-b border-neutral-100 pb-1.5 md:border-none md:pb-0"
-              >
-                <span>{t('Contact VIP Concierge')}</span>
-                <ChevronRight size={12} className="text-neutral-400 rotate-90" />
-              </button>
+              {isWaActive && waUrl ? (
+                <a 
+                  href={waUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="hover:text-black hover:underline transition-colors cursor-pointer text-left flex items-center gap-1 w-full justify-between pr-2 border-b border-neutral-100 pb-1.5 md:border-none md:pb-0"
+                >
+                  <span>{t('Contact VIP Concierge')}</span>
+                  <ChevronRight size={12} className="text-neutral-400 rotate-90" />
+                </a>
+              ) : (
+                <button 
+                  onClick={() => onNavigateToView('stories')} 
+                  className="hover:text-black hover:underline transition-colors cursor-pointer text-left flex items-center gap-1 w-full justify-between pr-2 border-b border-neutral-100 pb-1.5 md:border-none md:pb-0"
+                >
+                  <span>{t('Client Inquiries')}</span>
+                  <ChevronRight size={12} className="text-neutral-400 rotate-90" />
+                </button>
+              )}
               <button 
                 onClick={() => onOpenLegalPolicy ? onOpenLegalPolicy('shipping') : onNavigateToView('stories')} 
                 className="hover:text-black hover:underline transition-colors cursor-pointer text-left flex items-center gap-1 w-full justify-between pr-2 border-b border-neutral-100 pb-1.5 md:border-none md:pb-0"
@@ -329,12 +361,16 @@ export const LuxuryFooter: React.FC<LuxuryFooterProps> = ({
               >
                 {t('Authenticity Guaranteed')}
               </button>
-              <button 
-                onClick={() => onOpenConcierge ? onOpenConcierge() : onNavigateToView('stories')} 
-                className="hover:text-black hover:underline transition-colors cursor-pointer text-left"
-              >
-                {t('VIP WhatsApp Concierge')}
-              </button>
+              {isWaActive && waUrl && (
+                <a 
+                  href={waUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="hover:text-black hover:underline transition-colors cursor-pointer text-left"
+                >
+                  {t('VIP WhatsApp Concierge')}
+                </a>
+              )}
             </div>
           </div>
 
@@ -443,31 +479,26 @@ export const LuxuryFooter: React.FC<LuxuryFooterProps> = ({
 
           {/* Dynamic Social Links from Admin Portal */}
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px] text-neutral-600 font-light">
-            {dynamicSocial?.instagram && (
-              <a href={dynamicSocial.instagram} target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">Instagram</a>
+            {dynamicSocial?.instagram?.trim() && (
+              <a href={dynamicSocial.instagram.trim()} target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">Instagram</a>
             )}
-            {dynamicSocial?.tiktok && (
-              <a href={dynamicSocial.tiktok} target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">TikTok</a>
+            {dynamicSocial?.tiktok?.trim() && (
+              <a href={dynamicSocial.tiktok.trim()} target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">TikTok</a>
             )}
-            {/* WhatsApp Social Link */}
-            {(() => {
-              const waNum = (dynamicContact?.whatsappNumber || dynamicContact?.contactPhone || '').replace(/[^0-9]/g, '');
-              const waUrl = dynamicSocial?.whatsapp?.trim() || (waNum ? `https://wa.me/${waNum}` : '');
-              if (!waUrl) return null;
-              return (
-                <a 
-                  href={waUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className="hover:text-neutral-900 transition-colors"
-                >
-                  WhatsApp
-                </a>
-              );
-            })()}
+            {/* WhatsApp Social Link: ONLY IF ACTIVE */}
+            {isWaActive && waUrl && (
+              <a 
+                href={waUrl} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="hover:text-neutral-900 transition-colors cursor-pointer"
+              >
+                WhatsApp
+              </a>
+            )}
             {dynamicSocial?.snapchat && dynamicSocial.snapchat.trim() !== '' && (
               <a 
-                href={dynamicSocial.snapchat.startsWith('http') ? dynamicSocial.snapchat : `https://snapchat.com/add/${dynamicSocial.snapchat.replace(/^@+/, '')}`} 
+                href={dynamicSocial.snapchat.trim().startsWith('http') ? dynamicSocial.snapchat.trim() : `https://snapchat.com/add/${dynamicSocial.snapchat.trim().replace(/^@+/, '')}`} 
                 target="_blank" 
                 rel="noopener noreferrer" 
                 className="hover:text-neutral-900 transition-colors"
@@ -475,23 +506,14 @@ export const LuxuryFooter: React.FC<LuxuryFooterProps> = ({
                 Snapchat
               </a>
             )}
-            {dynamicSocial?.facebook && (
-              <a href={dynamicSocial.facebook} target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">Facebook</a>
+            {dynamicSocial?.youtube?.trim() && (
+              <a href={dynamicSocial.youtube.trim()} target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">YouTube</a>
             )}
-            {dynamicSocial?.pinterest && (
-              <a href={dynamicSocial.pinterest} target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">Pinterest</a>
+            {dynamicSocial?.facebook?.trim() && (
+              <a href={dynamicSocial.facebook.trim()} target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">Facebook</a>
             )}
-            {dynamicSocial?.twitter && (
-              <a href={dynamicSocial.twitter} target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">X (Twitter)</a>
-            )}
-            {dynamicSocial?.youtube && (
-              <a href={dynamicSocial.youtube} target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">YouTube</a>
-            )}
-            {!dynamicSocial && (
-              <>
-                <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">Instagram</a>
-                <a href="https://tiktok.com" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">TikTok</a>
-              </>
+            {dynamicSocial?.twitter?.trim() && (
+              <a href={dynamicSocial.twitter.trim()} target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">X / Twitter</a>
             )}
           </div>
         </div>

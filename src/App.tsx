@@ -38,44 +38,6 @@ import { LUXURY_CATEGORIES } from './data/luxuryData';
 import { ALL_LUXURY_PRODUCTS, PRODUCT_CATEGORIES } from './constants';
 
 export default function App() {
-  // Local Storage & Cache Purge for Legacy Phone Numbers on Mount
-  useEffect(() => {
-    try {
-      const cached = localStorage.getItem('lana_site_settings_cache');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        const legacyPresets = ["252619756855", "252611234567", "966501234567", "966114567890", "966551234567", "966509876543", "966500000000"];
-        const cleanDigits = (num: string) => (num || '').replace(/[^0-9]/g, '');
-
-        let modified = false;
-        if (legacyPresets.includes(cleanDigits(parsed.whatsappNumber))) {
-          parsed.whatsappNumber = '';
-          modified = true;
-        }
-        if (parsed.contactInfo) {
-          if (legacyPresets.includes(cleanDigits(parsed.contactInfo.whatsappNumber))) {
-            parsed.contactInfo.whatsappNumber = '';
-            modified = true;
-          }
-          if (legacyPresets.includes(cleanDigits(parsed.contactInfo.contactPhone))) {
-            parsed.contactInfo.contactPhone = '';
-            modified = true;
-          }
-        }
-        if (parsed.socialLinks) {
-          if (legacyPresets.includes(cleanDigits(parsed.socialLinks.whatsapp))) {
-            parsed.socialLinks.whatsapp = '';
-            modified = true;
-          }
-        }
-
-        if (modified) {
-          localStorage.setItem('lana_site_settings_cache', JSON.stringify(parsed));
-          window.dispatchEvent(new CustomEvent('lana_settings_updated', { detail: parsed }));
-        }
-      }
-    } catch {}
-  }, []);
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -668,6 +630,8 @@ export default function App() {
 
       {/* 4. LUXURY EDITORIAL ACCORDION FOOTER */}
       <LuxuryFooter
+        socialLinks={homepageSettings?.socialLinks}
+        contactInfo={homepageSettings?.contactInfo}
         onOpenTracker={() => setIsTrackerOpen(true)}
         onOpenAdmin={() => setIsAdminOpen(true)}
         onSelectCategory={(cat) => {
@@ -685,19 +649,27 @@ export default function App() {
         onOpenFAQ={() => setIsFaqModalOpen(true)}
         onOpenConcierge={() => {
           let num = '';
+          let isWaEnabled = true;
           try {
             const cached = localStorage.getItem('lana_site_settings_cache');
             if (cached) {
               const parsed = JSON.parse(cached);
+              if (parsed.whatsappEnabled === false) isWaEnabled = false;
+              if (parsed.contactInfo?.whatsappEnabled === false) isWaEnabled = false;
               const p = parsed.whatsappNumber || parsed.contactInfo?.whatsappNumber || parsed.contactInfo?.contactPhone;
               if (p) num = String(p).replace(/[^0-9]/g, '');
             }
           } catch {}
-          if (!num) {
-            alert("WhatsApp phone number is not configured in Admin Settings yet.");
-            return;
+          if (!num && homepageSettings) {
+            if (homepageSettings.whatsappEnabled === false) isWaEnabled = false;
+            const p = homepageSettings.whatsappNumber || homepageSettings.contactInfo?.whatsappNumber || homepageSettings.contactInfo?.contactPhone;
+            if (p) num = String(p).replace(/[^0-9]/g, '');
           }
-          window.open(`https://wa.me/${num}?text=${encodeURIComponent('Salam Maison LANA Concierge, I would like assistance.')}`, '_blank');
+          if (isWaEnabled && num) {
+            window.open(`https://wa.me/${num}?text=${encodeURIComponent('Salam Maison LANA Concierge, I would like assistance.')}`, '_blank');
+          } else {
+            setIsAdminOpen(true);
+          }
         }}
         selectedCountryName={selectedCountryName}
         highContrast={highContrast}

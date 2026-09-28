@@ -49,6 +49,13 @@ export const MobileMenu: React.FC<MobileMenuProps> = ({
     return () => window.removeEventListener('lana_settings_updated', handleUpdate);
   }, []);
 
+  const isWaActive = (() => {
+    if (dynamicSettings?.whatsappEnabled === false) return false;
+    if (dynamicSettings?.contactInfo?.whatsappEnabled === false) return false;
+    const raw = dynamicSettings?.whatsappNumber || dynamicSettings?.contactInfo?.whatsappNumber || dynamicSettings?.contactInfo?.contactPhone || '';
+    return Boolean(String(raw).replace(/[^0-9]/g, ''));
+  })();
+
   const rawWaNum = dynamicSettings?.whatsappNumber || dynamicSettings?.contactInfo?.whatsappNumber || dynamicSettings?.contactInfo?.contactPhone || '';
   const cleanWaNum = String(rawWaNum).replace(/[^0-9]/g, '');
   const socialLinks = dynamicSettings?.socialLinks || {};
@@ -513,7 +520,7 @@ export const MobileMenu: React.FC<MobileMenuProps> = ({
               <ChevronRight size={14} />
             </button>
 
-            {cleanWaNum && (
+            {isWaActive && cleanWaNum && (
               <a
                 href={`https://wa.me/${cleanWaNum}?text=${encodeURIComponent('Salam Maison LANA Concierge, I would like assistance.')}`}
                 target="_blank"

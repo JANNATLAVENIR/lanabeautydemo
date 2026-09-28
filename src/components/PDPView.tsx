@@ -74,6 +74,20 @@ export const PDPView: React.FC<PDPViewProps> = ({
     }
   };
 
+  const isWaActive = (() => {
+    try {
+      const cached = localStorage.getItem('lana_site_settings_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed.whatsappEnabled === false) return false;
+        if (parsed.contactInfo?.whatsappEnabled === false) return false;
+        const phone = (parsed.whatsappNumber || parsed.contactInfo?.whatsappNumber || '').replace(/[^0-9]/g, '');
+        return Boolean(phone);
+      }
+    } catch {}
+    return true;
+  })();
+
   const handleWhatsAppInquire = () => {
     if (!product) return;
     const url = typeof window !== 'undefined' ? window.location.href : '';
@@ -91,8 +105,7 @@ export const PDPView: React.FC<PDPViewProps> = ({
     } catch {}
 
     if (!targetPhone) {
-      alert("WhatsApp phone number is not configured in Admin Settings yet.");
-      return;
+      targetPhone = '252619756855';
     }
 
     window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`, '_blank');
@@ -420,14 +433,16 @@ export const PDPView: React.FC<PDPViewProps> = ({
               </div>
 
               {/* WhatsApp VIP Concierge Quick Inquire */}
-              <button
-                onClick={handleWhatsAppInquire}
-                type="button"
-                className="w-full py-2.5 px-4 bg-emerald-950/20 border border-emerald-500/40 hover:bg-emerald-950/40 text-emerald-800 hover:text-emerald-900 text-xs font-serif uppercase tracking-widest flex items-center justify-center gap-2 transition-all cursor-pointer"
-              >
-                <MessageCircle className="w-4 h-4 text-emerald-600" />
-                <span>Inquire on WhatsApp with a VIP Advisor</span>
-              </button>
+              {isWaActive && (
+                <button
+                  onClick={handleWhatsAppInquire}
+                  type="button"
+                  className="w-full py-2.5 px-4 bg-emerald-950/20 border border-emerald-500/40 hover:bg-emerald-950/40 text-emerald-800 hover:text-emerald-900 text-xs font-serif uppercase tracking-widest flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <MessageCircle className="w-4 h-4 text-emerald-600" />
+                  <span>Inquire on WhatsApp with a VIP Advisor</span>
+                </button>
+              )}
 
               {/* Social Share Bar */}
               <div className="flex items-center justify-between py-2.5 px-3 bg-neutral-50 border border-neutral-200 text-xs">

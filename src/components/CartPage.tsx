@@ -313,15 +313,18 @@ export const CartPage: React.FC<CartPageProps> = ({
               {/* WhatsApp Fast Checkout */}
               {(() => {
                 let targetPhone = '';
+                let isWaEnabled = true;
                 try {
                   const cached = localStorage.getItem('lana_site_settings_cache');
                   if (cached) {
                     const parsed = JSON.parse(cached);
+                    if (parsed.whatsappEnabled === false) isWaEnabled = false;
+                    if (parsed.contactInfo?.whatsappEnabled === false) isWaEnabled = false;
                     const p = parsed.whatsappNumber || parsed.contactInfo?.whatsappNumber || parsed.contactInfo?.contactPhone;
                     if (p) targetPhone = String(p).replace(/[^0-9]/g, '');
                   }
                 } catch {}
-                if (!targetPhone) return null;
+                if (!isWaEnabled || !targetPhone) return null;
                 return (
                   <a
                     href={`https://wa.me/${targetPhone}?text=${encodeURIComponent(`Hello Lana Concierge, I would like to place an order for my bag total of $${total}`)}`}
