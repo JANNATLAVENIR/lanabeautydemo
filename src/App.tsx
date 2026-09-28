@@ -38,11 +38,17 @@ import { LUXURY_CATEGORIES } from './data/luxuryData';
 import { ALL_LUXURY_PRODUCTS, PRODUCT_CATEGORIES } from './constants';
 
 export default function App() {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>(PRODUCT_CATEGORIES);
+  const [products, setProducts] = useState<Product[]>(ALL_LUXURY_PRODUCTS);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [homepageSettings, setHomepageSettings] = useState<HomepageSettings | undefined>(undefined);
-  const [loading, setLoading] = useState(true);
+  const [homepageSettings, setHomepageSettings] = useState<HomepageSettings | undefined>(() => {
+    try {
+      const cached = localStorage.getItem('lana_site_settings_cache');
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return undefined;
+  });
+  const [loading, setLoading] = useState(false);
 
   // Active View Navigation State
   const [activeView, setActiveView] = useState<ActiveView>('home');
