@@ -1207,10 +1207,10 @@ async function startServer() {
         memoryHomepageSettings?.whatsappNumber ||
         memoryHomepageSettings?.contactInfo?.whatsappNumber ||
         memoryHomepageSettings?.contactInfo?.contactPhone ||
-        "252611234567";
+        "";
 
-      const cleanTargetPhone = String(targetWhatsappRaw).replace(/[^0-9]/g, "") || "252611234567";
-      const whatsappUrl = `https://wa.me/${cleanTargetPhone}?text=${encodedMessage}`;
+      const cleanTargetPhone = String(targetWhatsappRaw).replace(/[^0-9]/g, "");
+      const whatsappUrl = cleanTargetPhone ? `https://wa.me/${cleanTargetPhone}?text=${encodedMessage}` : `https://wa.me/?text=${encodedMessage}`;
 
       const responsePayload = {
         order: newOrder,

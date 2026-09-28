@@ -76,16 +76,34 @@ export function ExecutiveSettingsManager({
     homepageSettings?.contactInfo?.contactEmail || 'concierge@lanaluxury.com'
   );
   const [contactPhone, setContactPhone] = useState(
-    homepageSettings?.contactInfo?.contactPhone || '+966 11 456 7890'
+    homepageSettings?.contactInfo?.contactPhone || ''
   );
   const [businessHours, setBusinessHours] = useState(
     homepageSettings?.contactInfo?.businessHours || 'Monday – Sunday: 10:00 AM – 11:00 PM (GMT+3)'
   );
 
   // 2. WhatsApp Concierge
-  const [whatsappNumber, setWhatsappNumber] = useState(
-    homepageSettings?.whatsappNumber || homepageSettings?.contactInfo?.whatsappNumber || '+966501234567'
-  );
+  const [whatsappNumber, setWhatsappNumber] = useState(() => {
+    try {
+      const cached = localStorage.getItem('lana_site_settings_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed.whatsappNumber) return parsed.whatsappNumber;
+        if (parsed.contactInfo?.whatsappNumber) return parsed.contactInfo.whatsappNumber;
+      }
+    } catch {}
+    return homepageSettings?.whatsappNumber || homepageSettings?.contactInfo?.whatsappNumber || '';
+  });
+
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem('lana_site_settings_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed.whatsappNumber && !whatsappNumber) setWhatsappNumber(parsed.whatsappNumber);
+      }
+    } catch {}
+  }, []);
   const [whatsappGreeting, setWhatsappGreeting] = useState(
     homepageSettings?.whatsappGreeting || 
     homepageSettings?.contactInfo?.whatsappGreeting || 

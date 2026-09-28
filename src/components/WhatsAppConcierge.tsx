@@ -19,7 +19,7 @@ export const WhatsAppConcierge: React.FC<WhatsAppConciergeProps> = ({
   const [selectedTopic, setSelectedTopic] = useState<'product' | 'order' | 'general' | 'vip'>('general');
   const [customNote, setCustomNote] = useState('');
   
-  const [activePhone, setActivePhone] = useState(propPhone || '+966501234567');
+  const [activePhone, setActivePhone] = useState(propPhone || '');
   const [activeStoreName, setActiveStoreName] = useState(propStoreName || 'Maison LANA');
   const [activeGreeting, setActiveGreeting] = useState('');
   const [isVisible, setIsVisible] = useState(true);
@@ -51,7 +51,7 @@ export const WhatsAppConcierge: React.FC<WhatsAppConciergeProps> = ({
 
   if (!isVisible) return null;
 
-  const cleanPhone = (activePhone || '966501234567').replace(/[^0-9]/g, '');
+  const cleanPhone = (activePhone || '').replace(/[^0-9]/g, '');
 
   const generateWhatsAppLink = () => {
     let message = '';
@@ -70,7 +70,7 @@ export const WhatsAppConcierge: React.FC<WhatsAppConciergeProps> = ({
     }
 
     const encoded = encodeURIComponent(message);
-    return `https://wa.me/${cleanPhone}?text=${encoded}`;
+    return cleanPhone ? `https://wa.me/${cleanPhone}?text=${encoded}` : `https://wa.me/?text=${encoded}`;
   };
 
   const handleOpenWhatsApp = () => {

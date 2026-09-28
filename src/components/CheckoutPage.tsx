@@ -30,15 +30,15 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
 
   // Form states
-  const [email, setEmail] = useState('client@lanaluxury.com');
-  const [phone, setPhone] = useState('+966 50 123 4567');
-  const [firstName, setFirstName] = useState('Amina');
-  const [lastName, setLastName] = useState('Al-Saud');
-  const [address, setAddress] = useState('Olaya District, Prince Mohammed Bin Abdulaziz Rd');
-  const [city, setCity] = useState('Riyadh');
-  const [country, setCountry] = useState('Saudi Arabia');
-  const [postalCode, setPostalCode] = useState('12211');
-  const [deliveryNotes, setDeliveryNotes] = useState('Please leave with private residence concierge.');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [country, setCountry] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [deliveryNotes, setDeliveryNotes] = useState('');
   const [giftWrapping, _setGiftWrapping] = useState(true);
 
   // Manual payment state
@@ -245,7 +245,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
               <a
-                href={(confirmedOrder as any).whatsappUrl || `https://wa.me/252611234567?text=${encodeURIComponent(`Salam Maison LANA Concierge, I have placed order #${confirmedOrder.id} for $${confirmedOrder.totalPrice}. Payment status is Pending.`)}`}
+                href={(confirmedOrder as any).whatsappUrl || `https://wa.me/?text=${encodeURIComponent(`Salam Maison LANA Concierge, I have placed order #${confirmedOrder.id} for $${confirmedOrder.totalPrice}. Payment status is Pending.`)}`}
                 target="_blank"
                 rel="noreferrer"
                 className="w-full sm:w-auto px-6 py-3.5 bg-emerald-800 text-white text-[10.5px] uppercase font-bold tracking-[0.25em] hover:bg-emerald-900 transition-colors flex items-center justify-center gap-2"
