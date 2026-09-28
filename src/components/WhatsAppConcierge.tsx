@@ -49,9 +49,9 @@ export const WhatsAppConcierge: React.FC<WhatsAppConciergeProps> = ({
     return () => window.removeEventListener('lana_settings_updated', handleSettingsUpdated);
   }, [propPhone, propStoreName]);
 
-  if (!isVisible) return null;
-
   const cleanPhone = (activePhone || '').replace(/[^0-9]/g, '');
+
+  if (!isVisible || !cleanPhone) return null;
 
   const generateWhatsAppLink = () => {
     let message = '';

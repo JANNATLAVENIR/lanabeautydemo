@@ -674,12 +674,36 @@ async function startServer() {
     return cleaned;
   }
 
+function sanitizePhoneNumbers(obj: any): any {
+  if (!obj || typeof obj !== 'object') return obj;
+  const legacyPresets = ["252611234567", "966501234567", "966114567890", "966501234567"];
+  const clean = { ...obj };
+
+  const isPreset = (num: any) => {
+    if (!num || typeof num !== 'string') return false;
+    const digits = num.replace(/[^0-9]/g, '');
+    return legacyPresets.includes(digits);
+  };
+
+  if (isPreset(clean.whatsappNumber)) clean.whatsappNumber = "";
+  if (clean.contactInfo) {
+    clean.contactInfo = { ...clean.contactInfo };
+    if (isPreset(clean.contactInfo.whatsappNumber)) clean.contactInfo.whatsappNumber = "";
+    if (isPreset(clean.contactInfo.contactPhone)) clean.contactInfo.contactPhone = "";
+  }
+  if (clean.socialLinks) {
+    clean.socialLinks = { ...clean.socialLinks };
+    if (clean.socialLinks.whatsapp && isPreset(clean.socialLinks.whatsapp)) clean.socialLinks.whatsapp = "";
+  }
+  return clean;
+}
+
   // Homepage Settings & Hero Banners Control
   app.get("/api/homepage-settings", async (req, res) => {
     try {
       const dbRes = await dbPool.query("SELECT id, settings FROM homepage_settings ORDER BY id DESC LIMIT 1");
       if (dbRes.rows.length > 0) {
-        const raw = dbRes.rows[0].settings;
+        const raw = sanitizePhoneNumbers(dbRes.rows[0].settings);
         memoryHomepageSettings = raw;
         try {
           fs.writeFileSync(HOMEPAGE_SETTINGS_FILE, JSON.stringify(raw, null, 2));
@@ -692,7 +716,7 @@ async function startServer() {
 
     // Fallback cache
     if (memoryHomepageSettings && Object.keys(memoryHomepageSettings).length > 0) {
-      return res.json(memoryHomepageSettings);
+      return res.json(sanitizePhoneNumbers(memoryHomepageSettings));
     }
 
     res.json({

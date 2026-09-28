@@ -121,6 +121,10 @@ export default function App() {
       }
       if (homeData) {
         setHomepageSettings(homeData);
+        try {
+          localStorage.setItem('lana_site_settings_cache', JSON.stringify(homeData));
+          window.dispatchEvent(new CustomEvent('lana_settings_updated', { detail: homeData }));
+        } catch {}
       }
 
       let catData: any = null;
