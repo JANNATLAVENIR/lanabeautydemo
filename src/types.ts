@@ -23,6 +23,7 @@ export interface Product {
   department?: 'Fashion' | 'Beauty' | 'Bodycare' | 'Accessories' | string;
   gender?: 'Women' | 'Men' | 'Unisex';
   retailPrice: number;
+  price?: number;
   originalPrice?: number;
   image: string;
   secondaryImage?: string;
@@ -34,8 +35,10 @@ export interface Product {
   details?: string[];
   ingredients?: string;
   savoirFaire?: string;
+  olfactoryNotes?: { top?: string; heart?: string; base?: string } | any;
   rating?: number;
   reviewCount?: number;
+  reviewsCount?: number;
   collection?: string;
   isNew?: boolean;
   isBestSeller?: boolean;
@@ -64,6 +67,7 @@ export interface OrderItem {
   color?: string;
   selectedStoreId?: string;
   wholesaleCost?: number;
+  product?: Product;
 }
 
 export type OrderStatus = 'Pending' | 'In Progress' | 'Dispatched' | 'Completed' | 'Cancelled';
@@ -88,6 +92,7 @@ export interface Order {
   status: OrderStatus;
   paymentStatus?: string;
   createdAt: string;
+  created_at?: string;
   assignedStoreIds?: Record<string, string>; // productId -> storeId
 }
 
