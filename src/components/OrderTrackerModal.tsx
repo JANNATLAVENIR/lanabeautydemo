@@ -29,7 +29,7 @@ export function OrderTrackerModal({ isOpen, onClose }: OrderTrackerModalProps) {
         if (num) return String(num).replace(/[^0-9]/g, '');
       }
     } catch {}
-    return '252611234567';
+    return '';
   });
 
   useEffect(() => {

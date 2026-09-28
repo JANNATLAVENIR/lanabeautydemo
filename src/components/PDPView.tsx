@@ -80,7 +80,7 @@ export const PDPView: React.FC<PDPViewProps> = ({
     const priceVal = product.retailPrice || (product as any).price || 0;
     const msg = `Hello Maison LANA VIP Concierge,\n\nI am inquiring about:\n*${product.name}* (Price: $${priceVal.toLocaleString()})\nLink: ${url}\n\nPlease advise on availability and bespoke client consultation.`;
     
-    let targetPhone = '252611234567';
+    let targetPhone = '';
     try {
       const cached = localStorage.getItem('lana_site_settings_cache');
       if (cached) {
@@ -89,6 +89,11 @@ export const PDPView: React.FC<PDPViewProps> = ({
         if (phone) targetPhone = phone.replace(/[^0-9]/g, '');
       }
     } catch {}
+
+    if (!targetPhone) {
+      alert("WhatsApp phone number is not configured in Admin Settings yet.");
+      return;
+    }
 
     window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`, '_blank');
   };

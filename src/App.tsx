@@ -38,6 +38,44 @@ import { LUXURY_CATEGORIES } from './data/luxuryData';
 import { ALL_LUXURY_PRODUCTS, PRODUCT_CATEGORIES } from './constants';
 
 export default function App() {
+  // Local Storage & Cache Purge for Legacy Phone Numbers on Mount
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem('lana_site_settings_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const legacyPresets = ["252611234567", "966501234567", "966114567890", "966501234567"];
+        const cleanDigits = (num: string) => (num || '').replace(/[^0-9]/g, '');
+
+        let modified = false;
+        if (legacyPresets.includes(cleanDigits(parsed.whatsappNumber))) {
+          parsed.whatsappNumber = '';
+          modified = true;
+        }
+        if (parsed.contactInfo) {
+          if (legacyPresets.includes(cleanDigits(parsed.contactInfo.whatsappNumber))) {
+            parsed.contactInfo.whatsappNumber = '';
+            modified = true;
+          }
+          if (legacyPresets.includes(cleanDigits(parsed.contactInfo.contactPhone))) {
+            parsed.contactInfo.contactPhone = '';
+            modified = true;
+          }
+        }
+        if (parsed.socialLinks) {
+          if (legacyPresets.includes(cleanDigits(parsed.socialLinks.whatsapp))) {
+            parsed.socialLinks.whatsapp = '';
+            modified = true;
+          }
+        }
+
+        if (modified) {
+          localStorage.setItem('lana_site_settings_cache', JSON.stringify(parsed));
+          window.dispatchEvent(new CustomEvent('lana_settings_updated', { detail: parsed }));
+        }
+      }
+    } catch {}
+  }, []);
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
