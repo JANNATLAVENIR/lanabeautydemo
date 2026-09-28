@@ -88,11 +88,15 @@ export default function App() {
   // Fetch initial data & live catalog synchronization
   const syncProducts = useCallback(async () => {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+
       const [prodRes, homeRes, catRes] = await Promise.all([
-        fetch('/api/products').catch(() => null),
-        fetch('/api/homepage-settings').catch(() => null),
-        fetch('/api/categories').catch(() => null)
+        fetch('/api/products', { signal: controller.signal }).catch(() => null),
+        fetch('/api/homepage-settings', { signal: controller.signal }).catch(() => null),
+        fetch('/api/categories', { signal: controller.signal }).catch(() => null)
       ]);
+      clearTimeout(timeoutId);
 
       let prodData: any = null;
       if (prodRes && prodRes.ok) {
