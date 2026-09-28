@@ -35,6 +35,8 @@ import { FAQModal } from './components/FAQModal';
 import { Product, Category, Order, ActiveView, BrandInfo, CollectionData, EditorialStory, HomepageSettings } from './types';
 import { LUXURY_CATEGORIES } from './data/luxuryData';
 
+import { ALL_LUXURY_PRODUCTS, PRODUCT_CATEGORIES } from './constants';
+
 export default function App() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -87,36 +89,52 @@ export default function App() {
   const syncProducts = useCallback(async () => {
     try {
       const [prodRes, homeRes, catRes] = await Promise.all([
-        fetch('/api/products'),
-        fetch('/api/homepage-settings'),
-        fetch('/api/categories')
+        fetch('/api/products').catch(() => null),
+        fetch('/api/homepage-settings').catch(() => null),
+        fetch('/api/categories').catch(() => null)
       ]);
 
-      if (prodRes.ok) {
-        const prodData = await prodRes.json();
-        if (Array.isArray(prodData)) {
-          setProducts(prodData);
+      let prodData: any = null;
+      if (prodRes && prodRes.ok) {
+        const ct = prodRes.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          prodData = await prodRes.json().catch(() => null);
         }
       }
 
-      if (homeRes.ok) {
-        const homeData = await homeRes.json();
+      if (Array.isArray(prodData) && prodData.length > 0) {
+        setProducts(prodData);
+      } else {
+        setProducts(ALL_LUXURY_PRODUCTS);
+      }
+
+      let homeData: any = null;
+      if (homeRes && homeRes.ok) {
+        const ct = homeRes.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          homeData = await homeRes.json().catch(() => null);
+        }
+      }
+      if (homeData) {
         setHomepageSettings(homeData);
       }
 
-      if (catRes.ok) {
-        const catData = await catRes.json();
-        if (Array.isArray(catData)) {
-          setCategories(catData);
-        } else {
-          setCategories([]);
+      let catData: any = null;
+      if (catRes && catRes.ok) {
+        const ct = catRes.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          catData = await catRes.json().catch(() => null);
         }
+      }
+      if (Array.isArray(catData) && catData.length > 0) {
+        setCategories(catData);
       } else {
-        setCategories([]);
+        setCategories(PRODUCT_CATEGORIES);
       }
     } catch (error) {
       console.error('Error syncing product & homepage data:', error);
-      setCategories([]);
+      setProducts(ALL_LUXURY_PRODUCTS);
+      setCategories(PRODUCT_CATEGORIES);
     } finally {
       setLoading(false);
     }
