@@ -36,6 +36,22 @@ export const LanaHeader: React.FC<LanaHeaderProps> = ({
   const { t, isRtl } = useI18n();
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeMegaMenu, setActiveMegaMenu] = useState<string | null>(null);
+  const [storeLogo, setStoreLogo] = useState<string>(() => {
+    try {
+      const cached = localStorage.getItem('lana_site_settings_cache');
+      return cached ? JSON.parse(cached).storeLogo || '' : '';
+    } catch {
+      return '';
+    }
+  });
+
+  useEffect(() => {
+    const handleSettingsUpdated = (e: any) => {
+      if (e.detail?.storeLogo !== undefined) setStoreLogo(e.detail.storeLogo);
+    };
+    window.addEventListener('lana_settings_updated', handleSettingsUpdated);
+    return () => window.removeEventListener('lana_settings_updated', handleSettingsUpdated);
+  }, []);
 
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -69,7 +85,7 @@ export const LanaHeader: React.FC<LanaHeaderProps> = ({
   const isTransparent = isDarkHeroView && !activeMegaMenu;
 
   const showMenu = !isHome;
-  const showSearch = true;
+  const showSearch = !isHome;
   const showCart = cartCount > 0;
   const showAccount = true;
 
@@ -132,9 +148,13 @@ export const LanaHeader: React.FC<LanaHeaderProps> = ({
               onTouchEnd={handleHeaderTouchEnd}
               onMouseDown={handleHeaderTouchStart}
               onMouseUp={handleHeaderTouchEnd}
-              className="font-serif text-xl sm:text-2xl tracking-[0.3em] font-light cursor-pointer select-none"
+              className="font-serif text-xl sm:text-2xl tracking-[0.3em] font-light cursor-pointer select-none flex items-center justify-center"
             >
-              LANA
+              {storeLogo ? (
+                <img src={storeLogo} alt="LANA Logo" className="h-7 sm:h-9 object-contain" />
+              ) : (
+                'LANA'
+              )}
             </button>
           </div>
         )}

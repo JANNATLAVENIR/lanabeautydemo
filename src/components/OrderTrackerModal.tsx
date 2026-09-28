@@ -20,6 +20,27 @@ export function OrderTrackerModal({ isOpen, onClose }: OrderTrackerModalProps) {
   const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
   const [_loadingHistory, setLoadingHistory] = useState(false);
 
+  const [dynamicWaNum, setDynamicWaNum] = useState<string>(() => {
+    try {
+      const cached = localStorage.getItem('lana_site_settings_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const num = parsed.whatsappNumber || parsed.contactInfo?.whatsappNumber || parsed.contactInfo?.contactPhone;
+        if (num) return String(num).replace(/[^0-9]/g, '');
+      }
+    } catch {}
+    return '252611234567';
+  });
+
+  useEffect(() => {
+    const handleUpdate = (e: any) => {
+      const num = e.detail?.whatsappNumber || e.detail?.contactInfo?.whatsappNumber || e.detail?.contactInfo?.contactPhone;
+      if (num) setDynamicWaNum(String(num).replace(/[^0-9]/g, ''));
+    };
+    window.addEventListener('lana_settings_updated', handleUpdate);
+    return () => window.removeEventListener('lana_settings_updated', handleUpdate);
+  }, []);
+
   // Load history on mount or when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -278,7 +299,7 @@ export function OrderTrackerModal({ isOpen, onClose }: OrderTrackerModalProps) {
 
                   {/* WhatsApp Enquiry Button */}
                   <a
-                    href={`https://wa.me/966500000000?text=Salam%20Lana,%20I%20have%20an%20inquiry%20regarding%20Order%20%23${order.id}`}
+                    href={`https://wa.me/${dynamicWaNum}?text=Salam%20Lana,%20I%20have%20an%20inquiry%20regarding%20Order%20%23${order.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="w-full py-2 bg-neutral-900 hover:bg-neutral-800 text-white text-[9px] uppercase tracking-[0.25em] font-sans font-extrabold flex items-center justify-center gap-2 transition-all cursor-pointer"

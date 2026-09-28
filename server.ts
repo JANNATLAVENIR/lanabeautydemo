@@ -1203,7 +1203,14 @@ async function startServer() {
       const whatsappMessage = `Hi Maison Lana Concierge! I'm ${newOrder.customerName}. I've registered order *#${orderId}*.\n\n*Order Summary:*\n${itemListText}\n\n*Total Due:* $${newOrder.totalPrice}.00\n*Payment Status:* PENDING\n*Payment Method:* Manual Payment\n*Delivery City:* ${newOrder.city}\n*Address:* ${newOrder.deliveryAddress}\n\nI am contacting you to complete my manual payment. Please provide banking details.`;
 
       const encodedMessage = encodeURIComponent(whatsappMessage);
-      const whatsappUrl = `https://wa.me/966500000000?text=${encodedMessage}`;
+      const targetWhatsappRaw =
+        memoryHomepageSettings?.whatsappNumber ||
+        memoryHomepageSettings?.contactInfo?.whatsappNumber ||
+        memoryHomepageSettings?.contactInfo?.contactPhone ||
+        "252611234567";
+
+      const cleanTargetPhone = String(targetWhatsappRaw).replace(/[^0-9]/g, "") || "252611234567";
+      const whatsappUrl = `https://wa.me/${cleanTargetPhone}?text=${encodedMessage}`;
 
       const responsePayload = {
         order: newOrder,

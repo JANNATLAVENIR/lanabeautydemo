@@ -28,7 +28,8 @@ import {
   Lock,
   Sliders,
   DollarSign,
-  Gift
+  Gift,
+  Upload
 } from 'lucide-react';
 import { HomepageSettings, SocialLinksSettings, StoreContactSettings } from '../../types';
 
@@ -55,6 +56,9 @@ export function ExecutiveSettingsManager({
   // 1. Boutique Identity
   const [storeName, setStoreName] = useState(
     homepageSettings?.contactInfo?.storeName || 'Maison LANA'
+  );
+  const [storeLogo, setStoreLogo] = useState(
+    (homepageSettings as any)?.storeLogo || ''
   );
   const [storeTagline, setStoreTagline] = useState(
     (homepageSettings as any)?.storeTagline || 'Haute Couture, Maroquinerie & Parfumerie Française'
@@ -313,6 +317,8 @@ export function ExecutiveSettingsManager({
 
     const payload = {
       ...(homepageSettings || {}),
+      storeName: storeName.trim(),
+      storeLogo: storeLogo.trim(),
       storeTagline: storeTagline.trim(),
       currencySymbol,
       whatsappNumber: whatsappNumber.trim(),
@@ -414,124 +420,126 @@ export function ExecutiveSettingsManager({
       {/* Main Settings Grid with Sidebar Navigation */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Navigation Sidebar */}
-        <div className="lg:col-span-3 bg-white border border-neutral-200 p-2 space-y-1 shadow-xs sticky top-4">
-          <div className="px-4 py-3 border-b border-neutral-100 mb-1">
+        <div className="lg:col-span-3 bg-white border border-neutral-200 p-2 shadow-xs lg:sticky lg:top-4 z-10">
+          <div className="px-3 py-2 lg:px-4 lg:py-3 border-b border-neutral-100 mb-2 lg:mb-1 flex items-center justify-between">
             <span className="text-[9.5px] uppercase font-bold tracking-[0.25em] text-neutral-400 block">
               SETTINGS DIRECTORY
             </span>
+            <span className="lg:hidden text-[9px] uppercase font-mono text-neutral-400">Swipe →</span>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveSection('boutique')}
-            className={`w-full px-4 py-3 text-left text-xs uppercase tracking-wider font-semibold transition-all flex items-center justify-between cursor-pointer ${
-              activeSection === 'boutique'
-                ? 'bg-neutral-900 text-white shadow-xs'
-                : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <Building2 size={15} />
-              <span>1. Maison Identity</span>
-            </div>
-            {activeSection === 'boutique' && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
-          </button>
+          <div className="flex flex-row overflow-x-auto lg:flex-col lg:overflow-x-visible gap-1.5 lg:gap-1 pb-1 lg:pb-0 scrollbar-none">
+            <button
+              type="button"
+              onClick={() => setActiveSection('boutique')}
+              className={`shrink-0 lg:w-full px-3.5 py-2.5 lg:px-4 lg:py-3 text-left text-[11px] lg:text-xs uppercase tracking-wider font-semibold transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                activeSection === 'boutique'
+                  ? 'bg-neutral-900 text-white shadow-xs'
+                  : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 border border-neutral-200/60 lg:border-transparent'
+              }`}
+            >
+              <div className="flex items-center gap-2 lg:gap-3">
+                <Building2 size={14} className="shrink-0" />
+                <span className="whitespace-nowrap">1. Maison Identity</span>
+              </div>
+              {activeSection === 'boutique' && <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />}
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveSection('concierge')}
-            className={`w-full px-4 py-3 text-left text-xs uppercase tracking-wider font-semibold transition-all flex items-center justify-between cursor-pointer ${
-              activeSection === 'concierge'
-                ? 'bg-neutral-900 text-white shadow-xs'
-                : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <Smartphone size={15} />
-              <span>2. VIP Concierge Line</span>
-            </div>
-            {activeSection === 'concierge' && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveSection('concierge')}
+              className={`shrink-0 lg:w-full px-3.5 py-2.5 lg:px-4 lg:py-3 text-left text-[11px] lg:text-xs uppercase tracking-wider font-semibold transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                activeSection === 'concierge'
+                  ? 'bg-neutral-900 text-white shadow-xs'
+                  : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 border border-neutral-200/60 lg:border-transparent'
+              }`}
+            >
+              <div className="flex items-center gap-2 lg:gap-3">
+                <Smartphone size={14} className="shrink-0" />
+                <span className="whitespace-nowrap">2. VIP Concierge</span>
+              </div>
+              {activeSection === 'concierge' && <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />}
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveSection('social')}
-            className={`w-full px-4 py-3 text-left text-xs uppercase tracking-wider font-semibold transition-all flex items-center justify-between cursor-pointer ${
-              activeSection === 'social'
-                ? 'bg-neutral-900 text-white shadow-xs'
-                : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <Share2 size={15} />
-              <span>3. Social Channels</span>
-            </div>
-            {activeSection === 'social' && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveSection('social')}
+              className={`shrink-0 lg:w-full px-3.5 py-2.5 lg:px-4 lg:py-3 text-left text-[11px] lg:text-xs uppercase tracking-wider font-semibold transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                activeSection === 'social'
+                  ? 'bg-neutral-900 text-white shadow-xs'
+                  : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 border border-neutral-200/60 lg:border-transparent'
+              }`}
+            >
+              <div className="flex items-center gap-2 lg:gap-3">
+                <Share2 size={14} className="shrink-0" />
+                <span className="whitespace-nowrap">3. Social Channels</span>
+              </div>
+              {activeSection === 'social' && <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />}
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveSection('promos')}
-            className={`w-full px-4 py-3 text-left text-xs uppercase tracking-wider font-semibold transition-all flex items-center justify-between cursor-pointer ${
-              activeSection === 'promos'
-                ? 'bg-neutral-900 text-white shadow-xs'
-                : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <Tag size={15} />
-              <span>4. Privilège Promo Codes</span>
-            </div>
-            <span className="text-[10px] font-mono opacity-70">({promoCodes.length})</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveSection('promos')}
+              className={`shrink-0 lg:w-full px-3.5 py-2.5 lg:px-4 lg:py-3 text-left text-[11px] lg:text-xs uppercase tracking-wider font-semibold transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                activeSection === 'promos'
+                  ? 'bg-neutral-900 text-white shadow-xs'
+                  : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 border border-neutral-200/60 lg:border-transparent'
+              }`}
+            >
+              <div className="flex items-center gap-2 lg:gap-3">
+                <Tag size={14} className="shrink-0" />
+                <span className="whitespace-nowrap">4. Promo Codes ({promoCodes.length})</span>
+              </div>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveSection('delivery')}
-            className={`w-full px-4 py-3 text-left text-xs uppercase tracking-wider font-semibold transition-all flex items-center justify-between cursor-pointer ${
-              activeSection === 'delivery'
-                ? 'bg-neutral-900 text-white shadow-xs'
-                : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <Truck size={15} />
-              <span>5. Delivery &amp; Policies</span>
-            </div>
-            {activeSection === 'delivery' && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveSection('delivery')}
+              className={`shrink-0 lg:w-full px-3.5 py-2.5 lg:px-4 lg:py-3 text-left text-[11px] lg:text-xs uppercase tracking-wider font-semibold transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                activeSection === 'delivery'
+                  ? 'bg-neutral-900 text-white shadow-xs'
+                  : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 border border-neutral-200/60 lg:border-transparent'
+              }`}
+            >
+              <div className="flex items-center gap-2 lg:gap-3">
+                <Truck size={14} className="shrink-0" />
+                <span className="whitespace-nowrap">5. Delivery &amp; Policies</span>
+              </div>
+              {activeSection === 'delivery' && <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />}
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveSection('homepage')}
-            className={`w-full px-4 py-3 text-left text-xs uppercase tracking-wider font-semibold transition-all flex items-center justify-between cursor-pointer ${
-              activeSection === 'homepage'
-                ? 'bg-neutral-900 text-white shadow-xs'
-                : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <Sparkles size={15} />
-              <span>6. Campaign Headlines</span>
-            </div>
-            {activeSection === 'homepage' && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveSection('homepage')}
+              className={`shrink-0 lg:w-full px-3.5 py-2.5 lg:px-4 lg:py-3 text-left text-[11px] lg:text-xs uppercase tracking-wider font-semibold transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                activeSection === 'homepage'
+                  ? 'bg-neutral-900 text-white shadow-xs'
+                  : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 border border-neutral-200/60 lg:border-transparent'
+              }`}
+            >
+              <div className="flex items-center gap-2 lg:gap-3">
+                <Sparkles size={14} className="shrink-0" />
+                <span className="whitespace-nowrap">6. Campaign Headlines</span>
+              </div>
+              {activeSection === 'homepage' && <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />}
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveSection('security')}
-            className={`w-full px-4 py-3 text-left text-xs uppercase tracking-wider font-semibold transition-all flex items-center justify-between cursor-pointer ${
-              activeSection === 'security'
-                ? 'bg-neutral-900 text-white shadow-xs'
-                : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <ShieldCheck size={15} />
-              <span>7. Master Security</span>
-            </div>
-            {activeSection === 'security' && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveSection('security')}
+              className={`shrink-0 lg:w-full px-3.5 py-2.5 lg:px-4 lg:py-3 text-left text-[11px] lg:text-xs uppercase tracking-wider font-semibold transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                activeSection === 'security'
+                  ? 'bg-neutral-900 text-white shadow-xs'
+                  : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900 border border-neutral-200/60 lg:border-transparent'
+              }`}
+            >
+              <div className="flex items-center gap-2 lg:gap-3">
+                <ShieldCheck size={14} className="shrink-0" />
+                <span className="whitespace-nowrap">7. Master Security</span>
+              </div>
+              {activeSection === 'security' && <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />}
+            </button>
+          </div>
         </div>
 
         {/* Content Form Area & Right Live Card */}
@@ -581,6 +589,73 @@ export function ExecutiveSettingsManager({
                       <option value="EUR (€)">EUR (€) — European Flagship</option>
                       <option value="SAR (﷼)">SAR (﷼) — Gulf VIP Private Vault</option>
                     </select>
+                  </div>
+
+                  <div className="sm:col-span-2 space-y-2">
+                    <label className="block text-neutral-700 font-bold uppercase tracking-wider text-[10px]">
+                      Maison Footer Logo Image (Sawirka Logo-ga ee Hoose)
+                    </label>
+                    
+                    <div className="p-4 bg-neutral-50 border border-neutral-200 space-y-3">
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <label className="px-4 py-2 bg-neutral-900 text-white text-xs font-bold uppercase tracking-wider hover:bg-neutral-800 cursor-pointer transition-colors inline-flex items-center justify-center gap-2 shrink-0">
+                          <Upload size={14} />
+                          <span>Soo Geli Sawir (File Upload)</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                const file = e.target.files[0];
+                                const reader = new FileReader();
+                                reader.onload = (event) => {
+                                  if (typeof event.target?.result === 'string') {
+                                    setStoreLogo(event.target.result);
+                                  }
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                            className="hidden"
+                          />
+                        </label>
+
+                        <input
+                          type="url"
+                          value={storeLogo.startsWith('data:') ? '' : storeLogo}
+                          onChange={(e) => setStoreLogo(e.target.value)}
+                          placeholder="Mise ku dheji Link-ga sawirka (URL e.g. https://.../logo.png)"
+                          className="flex-1 px-3.5 py-2 bg-white border border-neutral-200 focus:outline-none focus:border-neutral-900 text-neutral-900 font-mono text-xs"
+                        />
+                      </div>
+
+                      {storeLogo ? (
+                        <div className="p-4 bg-white border border-neutral-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                          <div className="flex items-center gap-4">
+                            <div className="p-2 border border-neutral-100 bg-white">
+                              <img src={storeLogo} alt="Logo Preview" className="h-14 max-w-[220px] object-contain mix-blend-multiply" />
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-emerald-700 font-bold uppercase block">Sawirka Logo-ga Waa Diyaar</span>
+                              <p className="text-[10px] text-neutral-500 font-sans">
+                                Cabirkiisii waa la weyneeyay (`h-16/h-24`), background-kiina wuu la jaanqaadayaa website-ka!
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setStoreLogo('')}
+                            className="text-[10px] text-red-600 hover:underline uppercase font-bold shrink-0 cursor-pointer"
+                          >
+                            Siib Sawirka
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-neutral-500 font-sans">
+                          Soo geli sawirka logo-ga dukaankaaga si uu ugu muuqdo hoosta (Footer-ka) website-ka.
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   <div className="sm:col-span-2">

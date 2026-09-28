@@ -449,9 +449,9 @@ export const LuxuryFooter: React.FC<LuxuryFooterProps> = ({
             {dynamicSocial?.tiktok && (
               <a href={dynamicSocial.tiktok} target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">TikTok</a>
             )}
-            {/* WhatsApp Social Link (matching TikTok style) */}
+            {/* WhatsApp Social Link */}
             <a 
-              href={dynamicSocial?.whatsapp || (dynamicContact?.whatsappNumber ? `https://wa.me/${dynamicContact.whatsappNumber.replace(/[^0-9]/g, '')}` : 'https://wa.me/966501234567')} 
+              href={dynamicSocial?.whatsapp || (dynamicContact?.whatsappNumber ? `https://wa.me/${dynamicContact.whatsappNumber.replace(/[^0-9]/g, '')}` : (dynamicContact?.contactPhone ? `https://wa.me/${dynamicContact.contactPhone.replace(/[^0-9]/g, '')}` : 'https://wa.me/252611234567'))} 
               target="_blank" 
               rel="noopener noreferrer" 
               className="hover:text-neutral-900 transition-colors"
@@ -484,14 +484,14 @@ export const LuxuryFooter: React.FC<LuxuryFooterProps> = ({
               <>
                 <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">Instagram</a>
                 <a href="https://tiktok.com" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">TikTok</a>
-                <a href="https://wa.me/966501234567" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">WhatsApp</a>
+                <a href="https://wa.me/252611234567" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">WhatsApp</a>
               </>
             )}
           </div>
         </div>
 
         {/* 4. LOGO & COPYRIGHT */}
-        <div className="pt-8 pb-4 text-center flex flex-col items-center justify-center gap-2 border-t border-neutral-100">
+        <div className="pt-8 pb-4 text-center flex flex-col items-center justify-center gap-3 border-t border-neutral-100">
           <button
             onClick={handleLogoClick}
             onTouchStart={handleTouchStart}
@@ -504,13 +504,21 @@ export const LuxuryFooter: React.FC<LuxuryFooterProps> = ({
           >
             LANA
           </button>
-          <div 
-            className="text-[10px] text-neutral-400 font-sans tracking-wider select-none flex flex-col items-center gap-1"
-          >
+
+          <div className="text-[10px] sm:text-[11px] text-neutral-400 font-sans tracking-wider select-none flex flex-col items-center gap-2">
             <span>{t('© 2026 LANA. All rights reserved.')}</span>
-            <span className="text-[8.5px] font-medium tracking-[0.28em] text-neutral-400 uppercase font-sans pt-0.5">
-              Crafted &amp; Powered by JANNAT L'AVENIR
-            </span>
+            
+            {/* Ultra-luxury 'Crafted & Powered by Jannat L'avenir' credit line - Mobile Optimized */}
+            <div className="pt-2 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2.5 text-[8.5px] sm:text-[9.5px] uppercase tracking-[0.2em] sm:tracking-[0.3em] text-neutral-400 font-sans text-center">
+              <span className="hidden sm:inline-block w-5 h-[0.5px] bg-neutral-200" />
+              <div className="flex flex-wrap items-center justify-center gap-1.5">
+                <span className="text-neutral-400 font-light">Crafted &amp; Powered by</span>
+                <span className="font-serif text-[10.5px] sm:text-[11.5px] font-medium tracking-[0.18em] sm:tracking-[0.22em] text-neutral-900">
+                  JANNAT L'AVENIR
+                </span>
+              </div>
+              <span className="hidden sm:inline-block w-5 h-[0.5px] bg-neutral-200" />
+            </div>
           </div>
         </div>
       </div>

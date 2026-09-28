@@ -32,6 +32,26 @@ export const MobileMenu: React.FC<MobileMenuProps> = ({
   const { t } = useI18n();
   const [level, setLevel] = useState<MenuLevel>('root');
   const [history, setHistory] = useState<MenuLevel[]>(['root']);
+  const [dynamicSettings, setDynamicSettings] = useState<any>(() => {
+    try {
+      const cached = localStorage.getItem('lana_site_settings_cache');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  React.useEffect(() => {
+    const handleUpdate = (e: any) => {
+      if (e.detail) setDynamicSettings(e.detail);
+    };
+    window.addEventListener('lana_settings_updated', handleUpdate);
+    return () => window.removeEventListener('lana_settings_updated', handleUpdate);
+  }, []);
+
+  const rawWaNum = dynamicSettings?.whatsappNumber || dynamicSettings?.contactInfo?.whatsappNumber || dynamicSettings?.contactInfo?.contactPhone || '252611234567';
+  const cleanWaNum = String(rawWaNum).replace(/[^0-9]/g, '') || '252611234567';
+  const socialLinks = dynamicSettings?.socialLinks || {};
 
   const navigateToLevel = (newLevel: MenuLevel) => {
     setHistory((prev) => [...prev, newLevel]);
@@ -477,8 +497,8 @@ export const MobileMenu: React.FC<MobileMenuProps> = ({
             </AnimatePresence>
           </div>
 
-          {/* Bottom Luxury Footer / Country Selector / WhatsApp */}
-          <div className="p-6 border-t border-neutral-100 bg-neutral-50 shrink-0 space-y-3">
+          {/* Bottom Luxury Footer / Country Selector / WhatsApp & Social Links */}
+          <div className="p-6 border-t border-neutral-100 bg-neutral-50 shrink-0 space-y-4">
             <button
               onClick={() => {
                 onClose();
@@ -494,7 +514,7 @@ export const MobileMenu: React.FC<MobileMenuProps> = ({
             </button>
 
             <a
-              href="https://wa.me/966500000000?text=Hello%20Lana%20Concierge"
+              href={`https://wa.me/${cleanWaNum}?text=${encodeURIComponent('Salam Maison LANA Concierge, I would like assistance.')}`}
               target="_blank"
               rel="noopener noreferrer"
               className="w-full flex items-center justify-center gap-2 py-3 bg-neutral-900 text-white text-[10.5px] uppercase tracking-[0.25em] font-semibold hover:bg-neutral-800 transition-colors"
@@ -502,6 +522,32 @@ export const MobileMenu: React.FC<MobileMenuProps> = ({
               <MessageSquare size={13} />
               <span>{t('Concierge')}</span>
             </a>
+
+            {/* Dynamic Social Links in Mobile Navigation */}
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 pt-2 border-t border-neutral-200/60 text-[11px] text-neutral-600 uppercase font-medium">
+              {socialLinks.instagram && (
+                <a href={socialLinks.instagram} target="_blank" rel="noopener noreferrer" className="hover:text-black transition-colors">Instagram</a>
+              )}
+              {socialLinks.tiktok && (
+                <a href={socialLinks.tiktok} target="_blank" rel="noopener noreferrer" className="hover:text-black transition-colors">TikTok</a>
+              )}
+              {socialLinks.snapchat && socialLinks.snapchat.trim() !== '' && (
+                <a 
+                  href={socialLinks.snapchat.startsWith('http') ? socialLinks.snapchat : `https://snapchat.com/add/${socialLinks.snapchat.replace(/^@+/, '')}`} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="hover:text-black transition-colors"
+                >
+                  Snapchat
+                </a>
+              )}
+              {socialLinks.facebook && (
+                <a href={socialLinks.facebook} target="_blank" rel="noopener noreferrer" className="hover:text-black transition-colors">Facebook</a>
+              )}
+              {socialLinks.youtube && (
+                <a href={socialLinks.youtube} target="_blank" rel="noopener noreferrer" className="hover:text-black transition-colors">YouTube</a>
+              )}
+            </div>
           </div>
         </motion.div>
       </motion.div>

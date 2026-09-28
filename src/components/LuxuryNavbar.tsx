@@ -3,6 +3,8 @@ import { ShoppingBag, Search, Menu, X, Heart, User, Shield, Sparkles } from 'luc
 import { MegaMenu } from './MegaMenu';
 import { ActiveView } from '../types';
 
+import jannatLogo from '../assets/images/jannat_lavenir_logo_1790575537199.jpg';
+
 export interface LuxuryNavbarProps {
   cartCount: number;
   wishlistCount: number;
@@ -80,28 +82,21 @@ export const LuxuryNavbar: React.FC<LuxuryNavbarProps> = ({
             )}
           </button>
 
-          {/* LANA Wordmark */}
+          {/* JANNAT L'AVENIR Official Brand Logo */}
           <button
             onClick={() => {
               onNavigateToView('home');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
-            className="group text-left cursor-pointer flex flex-col justify-center select-none"
+            className="group text-left cursor-pointer flex items-center select-none py-1"
           >
-            <span
-              className={`font-serif tracking-[0.35em] text-2xl sm:text-3xl font-light leading-none transition-all duration-300 ${
-                isTransparent ? 'text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]' : 'text-neutral-900'
+            <img
+              src={jannatLogo}
+              alt="JANNAT L'AVENIR"
+              className={`h-10 sm:h-12 md:h-14 w-auto object-contain mix-blend-multiply transition-transform duration-300 group-hover:scale-105 ${
+                isTransparent ? 'brightness-200 contrast-125 filter drop-shadow-[0_2px_8px_rgba(255,255,255,0.8)]' : ''
               }`}
-            >
-              LANA
-            </span>
-            <span
-              className={`text-[7px] uppercase tracking-[0.55em] font-sans font-semibold mt-1 transition-colors duration-300 ${
-                isTransparent ? 'text-white/80' : 'text-neutral-400'
-              }`}
-            >
-              PARIS
-            </span>
+            />
           </button>
         </div>
 

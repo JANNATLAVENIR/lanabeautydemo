@@ -245,7 +245,7 @@ export const CheckoutPage: React.FC<CheckoutPageProps> = ({
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
               <a
-                href={`https://wa.me/966500000000?text=${encodeURIComponent(`Salam Maison LANA Concierge, I have placed order #${confirmedOrder.id} for $${confirmedOrder.totalPrice}. Payment status is Pending.`)}`}
+                href={(confirmedOrder as any).whatsappUrl || `https://wa.me/252611234567?text=${encodeURIComponent(`Salam Maison LANA Concierge, I have placed order #${confirmedOrder.id} for $${confirmedOrder.totalPrice}. Payment status is Pending.`)}`}
                 target="_blank"
                 rel="noreferrer"
                 className="w-full sm:w-auto px-6 py-3.5 bg-emerald-800 text-white text-[10.5px] uppercase font-bold tracking-[0.25em] hover:bg-emerald-900 transition-colors flex items-center justify-center gap-2"

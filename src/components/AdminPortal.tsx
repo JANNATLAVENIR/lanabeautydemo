@@ -257,7 +257,7 @@ export function ImageUploader({ label = "Product Image", value, onChange, requir
 }
 
 export function AdminPortal({ isOpen, onClose, onProductsChanged }: AdminPortalProps) {
-  const [adminEmail, setAdminEmail] = useState('lanamarketplacehq@gmail.com');
+  const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [adminToken, setAdminToken] = useState<string>(() => localStorage.getItem('lana_admin_token') || '');

@@ -1,6 +1,6 @@
 {
-  "name": "Lana",
-  "description": "An exclusive haute couture & luxury marketplace featuring designer dresses, Dior bags, Hermès footwear, prestige fragrances, and high-pigment cosmetics.",
+  "name": "JANNAT L'AVENIR",
+  "description": "JANNAT L'AVENIR — Ideas Deserve to Become Real. An exclusive haute couture & luxury marketplace featuring designer dresses, Dior bags, prestige fragrances, and high-pigment cosmetics.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

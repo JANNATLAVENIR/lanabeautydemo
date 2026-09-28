@@ -79,7 +79,18 @@ export const PDPView: React.FC<PDPViewProps> = ({
     const url = typeof window !== 'undefined' ? window.location.href : '';
     const priceVal = product.retailPrice || (product as any).price || 0;
     const msg = `Hello Maison LANA VIP Concierge,\n\nI am inquiring about:\n*${product.name}* (Price: $${priceVal.toLocaleString()})\nLink: ${url}\n\nPlease advise on availability and bespoke client consultation.`;
-    window.open(`https://wa.me/252615000000?text=${encodeURIComponent(msg)}`, '_blank');
+    
+    let targetPhone = '252611234567';
+    try {
+      const cached = localStorage.getItem('lana_site_settings_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const phone = parsed.whatsappNumber || parsed.contactInfo?.whatsappNumber || parsed.contactInfo?.contactPhone;
+        if (phone) targetPhone = phone.replace(/[^0-9]/g, '');
+      }
+    } catch {}
+
+    window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
   useEffect(() => {
