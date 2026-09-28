@@ -289,7 +289,7 @@ export function CartDrawer({
                     <input 
                       type="tel"
                       required
-                      placeholder="e.g. +252 / +966 / +1..."
+                      placeholder="Phone Number"
                       value={customerPhone}
                       onChange={(e) => setCustomerPhone(e.target.value)}
                       className="w-full px-2.5 py-1.5 text-xs bg-[#FCFAF8] border border-lana-nude/40 focus:outline-none focus:border-lana-gold font-sans"

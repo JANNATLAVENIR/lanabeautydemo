@@ -258,7 +258,7 @@ let memoryCustomers: any[] = [
     name: "Fatima Al-Zahra",
     email: "fatima.zahra@example.com",
     password: "Password123!",
-    phone: "+966 55 123 4567",
+    phone: "",
     memberTier: "Maison VIP",
     memberSince: "2024",
     createdAt: new Date(Date.now() - 86400000 * 30).toISOString()
@@ -268,7 +268,7 @@ let memoryCustomers: any[] = [
     name: "Sultan Al-Otaibi",
     email: "sultan.otaibi@example.com",
     password: "LanaClient2026",
-    phone: "+966 50 987 6543",
+    phone: "",
     memberTier: "Haute Cercle",
     memberSince: "2025",
     createdAt: new Date(Date.now() - 86400000 * 10).toISOString()
@@ -676,7 +676,7 @@ async function startServer() {
 
 function sanitizePhoneNumbers(obj: any): any {
   if (!obj || typeof obj !== 'object') return obj;
-  const legacyPresets = ["252611234567", "966501234567", "966114567890", "966501234567"];
+  const legacyPresets = ["252619756855", "252611234567", "966501234567", "966114567890", "966551234567", "966509876543", "966500000000"];
   const clean = { ...obj };
 
   const isPreset = (num: any) => {
@@ -786,7 +786,7 @@ function sanitizePhoneNumbers(obj: any): any {
       name: req.body.name || "New Partner Store",
       neighborhood: req.body.neighborhood || "Central District",
       contactPerson: req.body.contactPerson || "Store Manager",
-      phone: req.body.phone || "+966500000000",
+      phone: req.body.phone || "",
       rating: 5.0,
       isActive: true,
     };
@@ -1170,7 +1170,7 @@ function sanitizePhoneNumbers(obj: any): any {
       const newOrder: Order = {
         id: orderId,
         customerName: customerName || "Anonymous Customer",
-        customerPhone: customerPhone || "+966500000000",
+        customerPhone: customerPhone || "",
         customerEmail: customerEmail || "",
         deliveryAddress: deliveryAddress || "Standard Delivery",
         city: city || "Riyadh",

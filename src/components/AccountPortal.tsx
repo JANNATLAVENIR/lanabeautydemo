@@ -282,7 +282,7 @@ export const AccountPortal: React.FC<AccountPortalProps> = ({
                     <label className="block text-[10px] uppercase font-bold text-neutral-500 mb-1">Phone Number</label>
                     <input
                       type="text"
-                      placeholder="+966 50 123 4567"
+                      placeholder="Phone number"
                       value={regPhone}
                       onChange={(e) => setRegPhone(e.target.value)}
                       className="w-full p-3 border border-neutral-200 focus:outline-none focus:border-neutral-950 bg-neutral-50/50 font-mono"
@@ -360,15 +360,29 @@ export const AccountPortal: React.FC<AccountPortalProps> = ({
             >
               Sign Out
             </button>
-            <a
-              href="https://wa.me/966500000000"
-              target="_blank"
-              rel="noreferrer"
-              className="px-5 py-2.5 border border-emerald-600 text-emerald-800 hover:bg-emerald-50 text-[10px] uppercase font-bold tracking-[0.2em] flex items-center gap-2 transition-colors"
-            >
-              <MessageSquare size={13} />
-              <span>Private Concierge</span>
-            </a>
+            {(() => {
+              let targetPhone = '';
+              try {
+                const cached = localStorage.getItem('lana_site_settings_cache');
+                if (cached) {
+                  const parsed = JSON.parse(cached);
+                  const p = parsed.whatsappNumber || parsed.contactInfo?.whatsappNumber || parsed.contactInfo?.contactPhone;
+                  if (p) targetPhone = String(p).replace(/[^0-9]/g, '');
+                }
+              } catch {}
+              if (!targetPhone) return null;
+              return (
+                <a
+                  href={`https://wa.me/${targetPhone}?text=${encodeURIComponent('Salam Maison LANA Concierge, I would like assistance.')}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-5 py-2.5 border border-emerald-600 text-emerald-800 hover:bg-emerald-50 text-[10px] uppercase font-bold tracking-[0.2em] flex items-center gap-2 transition-colors"
+                >
+                  <MessageSquare size={13} />
+                  <span>Private Concierge</span>
+                </a>
+              );
+            })()}
             <button
               onClick={onOpenAdmin}
               className="px-5 py-2.5 bg-neutral-900 text-white text-[10px] uppercase font-bold tracking-[0.2em] hover:bg-neutral-800 transition-colors flex items-center gap-1.5 cursor-pointer"
@@ -631,7 +645,6 @@ export const AccountPortal: React.FC<AccountPortalProps> = ({
                     <span className="px-2 py-0.5 bg-neutral-900 text-white text-[8px] font-bold uppercase">DEFAULT</span>
                   </div>
                   <p className="text-neutral-600">Olaya District, Prince Mohammed Bin Abdulaziz Rd, Riyadh 12211, Saudi Arabia</p>
-                  <p className="text-neutral-400 font-mono">+966 50 123 4567</p>
                 </div>
               </div>
             )}
@@ -652,17 +665,31 @@ export const AccountPortal: React.FC<AccountPortalProps> = ({
                 <div className="p-6 bg-[#FAF9F5] border border-neutral-200 space-y-4">
                   <h4 className="font-serif text-lg uppercase font-light">Direct Artisan Channel</h4>
                   <p className="text-xs text-neutral-500 font-sans">
-                    Reach our Paris &amp; Riyadh client relations team instantly via verified WhatsApp.
+                    Reach our client relations team instantly via verified WhatsApp.
                   </p>
-                  <a
-                    href="https://wa.me/966500000000"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-800 text-white text-[10px] uppercase font-bold tracking-widest hover:bg-emerald-900 transition-colors"
-                  >
-                    <MessageSquare size={14} />
-                    <span>Initiate WhatsApp Session</span>
-                  </a>
+                  {(() => {
+                    let targetPhone = '';
+                    try {
+                      const cached = localStorage.getItem('lana_site_settings_cache');
+                      if (cached) {
+                        const parsed = JSON.parse(cached);
+                        const p = parsed.whatsappNumber || parsed.contactInfo?.whatsappNumber || parsed.contactInfo?.contactPhone;
+                        if (p) targetPhone = String(p).replace(/[^0-9]/g, '');
+                      }
+                    } catch {}
+                    if (!targetPhone) return null;
+                    return (
+                      <a
+                        href={`https://wa.me/${targetPhone}?text=${encodeURIComponent('Salam Maison LANA Concierge, I would like assistance.')}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-800 text-white text-[10px] uppercase font-bold tracking-widest hover:bg-emerald-900 transition-colors"
+                      >
+                        <MessageSquare size={14} />
+                        <span>Initiate WhatsApp Session</span>
+                      </a>
+                    );
+                  })()}
                 </div>
               </div>
             )}

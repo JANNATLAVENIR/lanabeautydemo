@@ -219,7 +219,7 @@ export const DiorSignupModal: React.FC<DiorSignupModalProps> = ({
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     className="w-full h-10 pb-1 bg-transparent border-b border-neutral-300 text-xs sm:text-[14px] text-neutral-900 focus:outline-none focus:border-neutral-900 transition-colors rounded-none placeholder:text-neutral-300 font-mono"
-                    placeholder="+966 50 123 4567"
+                    placeholder="Phone number"
                   />
                 </div>
               </>

@@ -736,7 +736,7 @@ export function ExecutiveSettingsManager({
                       type="text"
                       value={contactPhone}
                       onChange={(e) => setContactPhone(e.target.value)}
-                      placeholder="+966 11 456 7890"
+                      placeholder="Geli lambarka taleefanka..."
                       className="w-full px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 focus:bg-white focus:border-neutral-900 text-neutral-900 font-medium text-xs transition-colors"
                     />
                   </div>
@@ -782,14 +782,14 @@ export function ExecutiveSettingsManager({
                         type="text"
                         value={whatsappNumber}
                         onChange={(e) => setWhatsappNumber(e.target.value)}
-                        placeholder="+966501234567 ama +252615000000"
+                        placeholder="Geli lambarka WhatsApp-ka oo wata koodhka dalka..."
                         className="w-full pl-10 pr-4 py-3 bg-neutral-50 border border-neutral-200 focus:bg-white focus:border-neutral-900 font-mono text-sm text-neutral-900"
                         required
                       />
                       <Phone size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" />
                     </div>
                     <p className="text-[11px] text-neutral-400 mt-1 font-mono">
-                      Format caalami ah: e.g. +966501234567, +252615000000, +447...
+                      Geli lambarka oo wata koodhka dalka adigoo aan dhex dhigin meelo banaan
                     </p>
                   </div>
 

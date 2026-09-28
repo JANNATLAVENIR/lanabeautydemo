@@ -1936,7 +1936,7 @@ export function AdminPortal({ isOpen, onClose, onProductsChanged }: AdminPortalP
                       <input 
                         type="tel" 
                         required 
-                        placeholder="e.g. +966500000000"
+                        placeholder="Phone / WhatsApp"
                         value={newStorePhone}
                         onChange={(e) => setNewStorePhone(e.target.value)}
                         className="w-full p-2 border border-lana-nude/40 focus:outline-none focus:border-lana-gold"

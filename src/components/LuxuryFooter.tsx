@@ -450,14 +450,21 @@ export const LuxuryFooter: React.FC<LuxuryFooterProps> = ({
               <a href={dynamicSocial.tiktok} target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">TikTok</a>
             )}
             {/* WhatsApp Social Link */}
-            <a 
-              href={dynamicSocial?.whatsapp || (dynamicContact?.whatsappNumber ? `https://wa.me/${dynamicContact.whatsappNumber.replace(/[^0-9]/g, '')}` : (dynamicContact?.contactPhone ? `https://wa.me/${dynamicContact.contactPhone.replace(/[^0-9]/g, '')}` : 'https://wa.me/252611234567'))} 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="hover:text-neutral-900 transition-colors"
-            >
-              WhatsApp
-            </a>
+            {(() => {
+              const waNum = (dynamicContact?.whatsappNumber || dynamicContact?.contactPhone || '').replace(/[^0-9]/g, '');
+              const waUrl = dynamicSocial?.whatsapp?.trim() || (waNum ? `https://wa.me/${waNum}` : '');
+              if (!waUrl) return null;
+              return (
+                <a 
+                  href={waUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="hover:text-neutral-900 transition-colors"
+                >
+                  WhatsApp
+                </a>
+              );
+            })()}
             {dynamicSocial?.snapchat && dynamicSocial.snapchat.trim() !== '' && (
               <a 
                 href={dynamicSocial.snapchat.startsWith('http') ? dynamicSocial.snapchat : `https://snapchat.com/add/${dynamicSocial.snapchat.replace(/^@+/, '')}`} 
@@ -484,7 +491,6 @@ export const LuxuryFooter: React.FC<LuxuryFooterProps> = ({
               <>
                 <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">Instagram</a>
                 <a href="https://tiktok.com" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">TikTok</a>
-                <a href="https://wa.me/252611234567" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">WhatsApp</a>
               </>
             )}
           </div>

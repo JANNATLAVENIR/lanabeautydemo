@@ -49,8 +49,8 @@ export const MobileMenu: React.FC<MobileMenuProps> = ({
     return () => window.removeEventListener('lana_settings_updated', handleUpdate);
   }, []);
 
-  const rawWaNum = dynamicSettings?.whatsappNumber || dynamicSettings?.contactInfo?.whatsappNumber || dynamicSettings?.contactInfo?.contactPhone || '252611234567';
-  const cleanWaNum = String(rawWaNum).replace(/[^0-9]/g, '') || '252611234567';
+  const rawWaNum = dynamicSettings?.whatsappNumber || dynamicSettings?.contactInfo?.whatsappNumber || dynamicSettings?.contactInfo?.contactPhone || '';
+  const cleanWaNum = String(rawWaNum).replace(/[^0-9]/g, '');
   const socialLinks = dynamicSettings?.socialLinks || {};
 
   const navigateToLevel = (newLevel: MenuLevel) => {
@@ -513,15 +513,17 @@ export const MobileMenu: React.FC<MobileMenuProps> = ({
               <ChevronRight size={14} />
             </button>
 
-            <a
-              href={`https://wa.me/${cleanWaNum}?text=${encodeURIComponent('Salam Maison LANA Concierge, I would like assistance.')}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full flex items-center justify-center gap-2 py-3 bg-neutral-900 text-white text-[10.5px] uppercase tracking-[0.25em] font-semibold hover:bg-neutral-800 transition-colors"
-            >
-              <MessageSquare size={13} />
-              <span>{t('Concierge')}</span>
-            </a>
+            {cleanWaNum && (
+              <a
+                href={`https://wa.me/${cleanWaNum}?text=${encodeURIComponent('Salam Maison LANA Concierge, I would like assistance.')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full flex items-center justify-center gap-2 py-3 bg-neutral-900 text-white text-[10.5px] uppercase tracking-[0.25em] font-semibold hover:bg-neutral-800 transition-colors"
+              >
+                <MessageSquare size={13} />
+                <span>{t('Concierge')}</span>
+              </a>
+            )}
 
             {/* Dynamic Social Links in Mobile Navigation */}
             <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 pt-2 border-t border-neutral-200/60 text-[11px] text-neutral-600 uppercase font-medium">

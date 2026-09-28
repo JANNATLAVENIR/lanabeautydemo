@@ -44,7 +44,7 @@ export default function App() {
       const cached = localStorage.getItem('lana_site_settings_cache');
       if (cached) {
         const parsed = JSON.parse(cached);
-        const legacyPresets = ["252611234567", "966501234567", "966114567890", "966501234567"];
+        const legacyPresets = ["252619756855", "252611234567", "966501234567", "966114567890", "966551234567", "966509876543", "966500000000"];
         const cleanDigits = (num: string) => (num || '').replace(/[^0-9]/g, '');
 
         let modified = false;
@@ -684,15 +684,19 @@ export default function App() {
         }}
         onOpenFAQ={() => setIsFaqModalOpen(true)}
         onOpenConcierge={() => {
-          let num = '966501234567';
+          let num = '';
           try {
             const cached = localStorage.getItem('lana_site_settings_cache');
             if (cached) {
               const parsed = JSON.parse(cached);
-              if (parsed.whatsappNumber) num = parsed.whatsappNumber.replace(/[^0-9]/g, '');
-              else if (parsed.contactInfo?.whatsappNumber) num = parsed.contactInfo.whatsappNumber.replace(/[^0-9]/g, '');
+              const p = parsed.whatsappNumber || parsed.contactInfo?.whatsappNumber || parsed.contactInfo?.contactPhone;
+              if (p) num = String(p).replace(/[^0-9]/g, '');
             }
           } catch {}
+          if (!num) {
+            alert("WhatsApp phone number is not configured in Admin Settings yet.");
+            return;
+          }
           window.open(`https://wa.me/${num}?text=${encodeURIComponent('Salam Maison LANA Concierge, I would like assistance.')}`, '_blank');
         }}
         selectedCountryName={selectedCountryName}

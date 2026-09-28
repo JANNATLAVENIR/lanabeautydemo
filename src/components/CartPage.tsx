@@ -311,14 +311,28 @@ export const CartPage: React.FC<CartPageProps> = ({
               </button>
 
               {/* WhatsApp Fast Checkout */}
-              <a
-                href={`https://wa.me/966500000000?text=Hello%20Lana%20Concierge,%20I%20would%20like%20to%20place%20an%20order%20for%20my%20bag%20total%20of%20$${total}`}
-                target="_blank"
-                rel="noreferrer"
-                className="w-full py-3 border border-emerald-600 text-emerald-800 hover:bg-emerald-50 text-[10px] uppercase font-bold tracking-[0.2em] flex items-center justify-center gap-2 cursor-pointer transition-colors"
-              >
-                <span>{t('Complete Order via WhatsApp')}</span>
-              </a>
+              {(() => {
+                let targetPhone = '';
+                try {
+                  const cached = localStorage.getItem('lana_site_settings_cache');
+                  if (cached) {
+                    const parsed = JSON.parse(cached);
+                    const p = parsed.whatsappNumber || parsed.contactInfo?.whatsappNumber || parsed.contactInfo?.contactPhone;
+                    if (p) targetPhone = String(p).replace(/[^0-9]/g, '');
+                  }
+                } catch {}
+                if (!targetPhone) return null;
+                return (
+                  <a
+                    href={`https://wa.me/${targetPhone}?text=${encodeURIComponent(`Hello Lana Concierge, I would like to place an order for my bag total of $${total}`)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full py-3 border border-emerald-600 text-emerald-800 hover:bg-emerald-50 text-[10px] uppercase font-bold tracking-[0.2em] flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                  >
+                    <span>{t('Complete Order via WhatsApp')}</span>
+                  </a>
+                );
+              })()}
 
               {/* Security Badges */}
               <div className="pt-4 border-t border-neutral-100 text-[10px] text-neutral-400 space-y-2 text-center">
