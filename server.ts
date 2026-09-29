@@ -5,12 +5,13 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
+import os from "os";
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import { Pool } from "pg";
 import bcrypt from "bcryptjs";
 import { LOCAL_STORES, PRODUCT_CATEGORIES, ROADMAP_PHASES, ALL_LUXURY_PRODUCTS } from "./src/constants";
-import { Order, Product, LocalStore, Category } from "./src/types";
+import { Order, Product, LocalStore, Category, HomepageSettings } from "./src/types";
 
 // Authoritative Database & Supabase Configuration
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
@@ -64,6 +65,62 @@ async function initStorageInfrastructure() {
         settings JSONB NOT NULL,
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
+      CREATE TABLE IF NOT EXISTS categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        image TEXT,
+        department TEXT DEFAULT 'Fashion',
+        sub_categories JSONB DEFAULT '[]'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS products (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        brand TEXT DEFAULT 'LANA',
+        category TEXT NOT NULL,
+        sub_category TEXT,
+        department TEXT DEFAULT 'Fashion',
+        gender TEXT,
+        retail_price NUMERIC NOT NULL DEFAULT 0,
+        original_price NUMERIC,
+        image TEXT NOT NULL,
+        secondary_image TEXT,
+        images JSONB DEFAULT '[]'::jsonb,
+        description TEXT,
+        volume TEXT,
+        sizes JSONB DEFAULT '[]'::jsonb,
+        colors JSONB DEFAULT '[]'::jsonb,
+        details JSONB DEFAULT '[]'::jsonb,
+        ingredients TEXT,
+        savoir_faire TEXT,
+        rating NUMERIC DEFAULT 5.0,
+        review_count INTEGER DEFAULT 1,
+        is_new BOOLEAN DEFAULT TRUE,
+        is_featured BOOLEAN DEFAULT FALSE,
+        is_bestseller BOOLEAN DEFAULT FALSE,
+        is_exclusive BOOLEAN DEFAULT FALSE,
+        is_active BOOLEAN DEFAULT TRUE,
+        supplier_inventory JSONB DEFAULT '[]'::jsonb,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS orders (
+        id TEXT PRIMARY KEY,
+        customer_name TEXT NOT NULL,
+        customer_phone TEXT NOT NULL,
+        customer_email TEXT,
+        delivery_address TEXT,
+        city TEXT,
+        postal_code TEXT,
+        notes TEXT,
+        items JSONB NOT NULL,
+        total_price NUMERIC NOT NULL,
+        status TEXT DEFAULT 'Pending',
+        payment_status TEXT DEFAULT 'Pending',
+        payment_method TEXT DEFAULT 'Manual Payment',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        assigned_store_ids JSONB DEFAULT '{}'::jsonb
+      );
       CREATE TABLE IF NOT EXISTS promo_codes (
         code TEXT PRIMARY KEY,
         discount_percent NUMERIC DEFAULT 0,
@@ -80,7 +137,7 @@ async function initStorageInfrastructure() {
         ('WELCOME50', 0, 50, 250, true)
       ON CONFLICT (code) DO NOTHING;
     `);
-    console.log("[STORAGE] PostgreSQL media_files, homepage_settings & promo_codes tables verified.");
+    console.log("[STORAGE] PostgreSQL tables (media_files, homepage_settings, categories, products, orders, promo_codes) verified.");
 
     if (SUPABASE_SERVICE_ROLE_KEY) {
       const { data: buckets } = await supabase.storage.listBuckets();
@@ -382,6 +439,17 @@ function mapDbOrder(row: any): Order {
   };
 }
 
+function mapDbCategory(row: any): Category {
+  return {
+    id: row.id,
+    name: row.name || "",
+    description: row.description || "",
+    image: row.image || "",
+    department: row.department || "Fashion",
+    subCategories: Array.isArray(row.sub_categories) ? row.sub_categories : (Array.isArray(row.subcategories) ? row.subcategories : [])
+  };
+}
+
 function mapDbStore(row: any): LocalStore {
   return {
     id: row.id,
@@ -407,24 +475,41 @@ for (const c of memoryCustomers) {
   }
 }
 
-// Media storage for high-performance instant uploads
-  const uploadsDir = path.join(process.cwd(), "uploads");
+// Media storage for high-performance instant uploads (Serverless-safe in os.tmpdir)
+const uploadsDir = path.join(os.tmpdir(), "lana_uploads");
+try {
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
   }
+} catch (e) {}
 
-  // Persistent Media Helper: Saves to Supabase CDN bucket + PostgreSQL backup + Local Cache
-  async function persistMediaFile(buffer: Buffer, filename: string, mimeType: string): Promise<string> {
-    const localFilePath = path.join(uploadsDir, filename);
+// Persistent Media Helper: Saves to Supabase CDN bucket + PostgreSQL backup + Serverless Temp Cache
+async function persistMediaFile(buffer: Buffer, filename: string, mimeType: string): Promise<string> {
+  const localFilePath = path.join(uploadsDir, filename);
 
-    // 1. Write to local cache for instant local serving
-    try {
-      fs.writeFileSync(localFilePath, buffer);
-    } catch (err) {
-      console.warn("Local cache write note:", err);
+  // 1. Write to local temp buffer
+  try {
+    fs.writeFileSync(localFilePath, buffer);
+  } catch (err) {}
+
+  // 2. Upload to Supabase Storage 'media' bucket for permanent global CDN delivery
+  try {
+    const { data, error } = await supabase.storage.from('media').upload(filename, buffer, {
+      contentType: mimeType,
+      upsert: true
+    });
+    if (!error && data) {
+      const { data: publicData } = supabase.storage.from('media').getPublicUrl(filename);
+      if (publicData?.publicUrl) {
+        return publicData.publicUrl;
+      }
     }
+  } catch (err: any) {
+    console.warn("Supabase storage upload note:", err.message);
+  }
 
-    // 2. Always persist to PostgreSQL media_files table as permanent durable backup
+  // 3. Persist to PostgreSQL media_files table as durable permanent backup
+  if (dbPool) {
     try {
       await dbPool.query(
         `INSERT INTO media_files (filename, mime_type, data_base64) 
@@ -435,80 +520,69 @@ for (const c of memoryCustomers) {
     } catch (err: any) {
       console.warn("PostgreSQL media_files save note:", err.message);
     }
-
-    // 3. Upload to Supabase Storage 'media' bucket for permanent CDN delivery
-    try {
-      const { data, error } = await supabase.storage.from('media').upload(filename, buffer, {
-        contentType: mimeType,
-        upsert: true
-      });
-      if (!error && data) {
-        const { data: publicData } = supabase.storage.from('media').getPublicUrl(filename);
-        if (publicData?.publicUrl) {
-          return publicData.publicUrl;
-        }
-      }
-    } catch (err: any) {
-      console.warn("Supabase storage upload note:", err.message);
-    }
-
-    return `/uploads/${filename}`;
   }
 
-  async function convertDataUrlToPersistentUrl(dataUrl: string, prefix = "img"): Promise<string> {
-    if (!dataUrl || typeof dataUrl !== "string" || !dataUrl.startsWith("data:")) {
-      return dataUrl;
-    }
-    try {
-      const matches = dataUrl.match(/^data:([A-Za-z0-9\-\.\/]+);base64,(.+)$/);
-      if (!matches || matches.length !== 3) return dataUrl;
+  // 4. Return serverless-safe media endpoint or data url fallback
+  if (buffer.length < 500000) {
+    // If under 500KB and storage is offline, data url ensures image never 404s
+    return `data:${mimeType};base64,${buffer.toString('base64')}`;
+  }
+  return `/api/media/${filename}`;
+}
 
-      const mime = matches[1].toLowerCase();
-      let ext = "jpg";
-      if (mime.includes("png")) ext = "png";
-      else if (mime.includes("webp")) ext = "webp";
-      else if (mime.includes("gif")) ext = "gif";
-      else if (mime.includes("mp4")) ext = "mp4";
-      else if (mime.includes("webm")) ext = "webm";
-      else if (mime.includes("quicktime") || mime.includes("mov")) ext = "mov";
+async function convertDataUrlToPersistentUrl(dataUrl: string, prefix = "img"): Promise<string> {
+  if (!dataUrl || typeof dataUrl !== "string" || !dataUrl.startsWith("data:")) {
+    return dataUrl;
+  }
+  try {
+    const matches = dataUrl.match(/^data:([A-Za-z0-9\-\.\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) return dataUrl;
 
-      const buffer = Buffer.from(matches[2], "base64");
-      const randomSuffix = crypto.randomBytes(4).toString("hex");
-      const cleanFilename = `${prefix}-${Date.now()}-${randomSuffix}.${ext}`;
+    const mime = matches[1].toLowerCase();
+    let ext = "jpg";
+    if (mime.includes("png")) ext = "png";
+    else if (mime.includes("webp")) ext = "webp";
+    else if (mime.includes("gif")) ext = "gif";
+    else if (mime.includes("mp4")) ext = "mp4";
+    else if (mime.includes("webm")) ext = "webm";
+    else if (mime.includes("quicktime") || mime.includes("mov")) ext = "mov";
 
-      return await persistMediaFile(buffer, cleanFilename, mime);
-    } catch (err) {
-      console.error("Failed to convert dataUrl to persistent media:", err);
-      return dataUrl;
-    }
+    const buffer = Buffer.from(matches[2], "base64");
+    const randomSuffix = crypto.randomBytes(4).toString("hex");
+    const cleanFilename = `${prefix}-${Date.now()}-${randomSuffix}.${ext}`;
+
+    return await persistMediaFile(buffer, cleanFilename, mime);
+  } catch (err) {
+    console.error("Failed to convert dataUrl to persistent media:", err);
+    return dataUrl;
+  }
+}
+
+// Resilient Media Delivery: Serves from Local Temp -> Supabase Storage -> PostgreSQL DB
+app.get(["/uploads/:filename", "/api/media/:filename"], async (req, res) => {
+  const { filename } = req.params;
+  const localPath = path.join(uploadsDir, filename);
+
+  // 1. Fast path: serve from local cache if file is present
+  if (fs.existsSync(localPath)) {
+    return res.sendFile(localPath);
   }
 
-  // Resilient Media Delivery: Serves from Local Disk -> Supabase Storage -> PostgreSQL DB
-  app.get("/uploads/:filename", async (req, res) => {
-    const { filename } = req.params;
-    const localPath = path.join(uploadsDir, filename);
-
-    // 1. Fast path: serve from local cache if file is present
-    if (fs.existsSync(localPath)) {
-      return res.sendFile(localPath);
+  // 2. Fetch from Supabase Storage 'media' bucket
+  try {
+    const { data, error } = await supabase.storage.from('media').download(filename);
+    if (!error && data) {
+      const arrayBuffer = await data.arrayBuffer();
+      const buf = Buffer.from(arrayBuffer);
+      try { fs.writeFileSync(localPath, buf); } catch (e) {}
+      res.setHeader("Content-Type", data.type || "application/octet-stream");
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      return res.send(buf);
     }
+  } catch (err) {}
 
-    // 2. Fetch from Supabase Storage 'media' bucket
-    try {
-      const { data, error } = await supabase.storage.from('media').download(filename);
-      if (!error && data) {
-        const arrayBuffer = await data.arrayBuffer();
-        const buf = Buffer.from(arrayBuffer);
-        try { fs.writeFileSync(localPath, buf); } catch (e) {}
-        res.setHeader("Content-Type", data.type || "application/octet-stream");
-        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-        return res.send(buf);
-      }
-    } catch (err) {
-      // Fallback to PostgreSQL
-    }
-
-    // 3. Fetch from PostgreSQL media_files table backup
+  // 3. Fetch from PostgreSQL media_files table backup
+  if (dbPool) {
     try {
       const dbRes = await dbPool.query("SELECT mime_type, data_base64 FROM media_files WHERE filename = $1", [filename]);
       if (dbRes.rows.length > 0) {
@@ -522,121 +596,192 @@ for (const c of memoryCustomers) {
     } catch (err) {
       console.warn("DB media recovery error:", err);
     }
+  }
 
-    return res.status(404).json({ error: "Media file not found or expired." });
-  });
+  return res.status(404).json({ error: "Media file not found or expired." });
+});
 
-  // Media Upload Endpoint
-  app.post("/api/upload", async (req, res) => {
-    if (!isAuthorizedAdmin(req)) {
-      return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
+// Media Upload Endpoint
+app.post(["/api/upload", "/upload"], async (req, res) => {
+  if (!isAuthorizedAdmin(req)) {
+    return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
+  }
+
+  try {
+    const { data, filename, mimeType } = req.body;
+    if (!data) {
+      return res.status(400).json({ error: "No media data provided." });
     }
 
-    try {
-      const { data, filename, mimeType } = req.body;
-      if (!data) {
-        return res.status(400).json({ error: "No media data provided." });
-      }
+    let buffer: Buffer;
+    let detectedMime = mimeType || "image/jpeg";
+    let ext = "jpg";
 
-      let buffer: Buffer;
-      let detectedMime = mimeType || "image/jpeg";
-      let ext = "jpg";
-
-      if (data.startsWith("data:")) {
-        const matches = data.match(/^data:([A-Za-z0-9\-\.\/]+);base64,(.+)$/);
-        if (matches && matches.length === 3) {
-          detectedMime = matches[1].toLowerCase();
-          if (detectedMime.includes("png")) ext = "png";
-          else if (detectedMime.includes("webp")) ext = "webp";
-          else if (detectedMime.includes("gif")) ext = "gif";
-          else if (detectedMime.includes("mp4")) ext = "mp4";
-          else if (detectedMime.includes("webm")) ext = "webm";
-          else if (detectedMime.includes("quicktime") || detectedMime.includes("mov")) ext = "mov";
-          else ext = "jpg";
-          buffer = Buffer.from(matches[2], "base64");
-        } else {
-          return res.status(400).json({ error: "Invalid data URL format." });
-        }
+    if (data.startsWith("data:")) {
+      const matches = data.match(/^data:([A-Za-z0-9\-\.\/]+);base64,(.+)$/);
+      if (matches && matches.length === 3) {
+        detectedMime = matches[1].toLowerCase();
+        if (detectedMime.includes("png")) ext = "png";
+        else if (detectedMime.includes("webp")) ext = "webp";
+        else if (detectedMime.includes("gif")) ext = "gif";
+        else if (detectedMime.includes("mp4")) ext = "mp4";
+        else if (detectedMime.includes("webm")) ext = "webm";
+        else if (detectedMime.includes("quicktime") || detectedMime.includes("mov")) ext = "mov";
+        else ext = "jpg";
+        buffer = Buffer.from(matches[2], "base64");
       } else {
-        buffer = Buffer.from(data, "base64");
-        if (mimeType?.includes("mp4")) ext = "mp4";
-        else if (mimeType?.includes("webm")) ext = "webm";
-        else if (mimeType?.includes("webp")) ext = "webp";
-        else if (mimeType?.includes("png")) ext = "png";
+        return res.status(400).json({ error: "Invalid data URL format." });
       }
-
-      const randomSuffix = crypto.randomBytes(4).toString("hex");
-      const cleanFilename = `media-${Date.now()}-${randomSuffix}.${ext}`;
-      const savedUrl = await persistMediaFile(buffer, cleanFilename, detectedMime);
-
-      res.json({ url: savedUrl, filename: cleanFilename });
-    } catch (err: any) {
-      console.error("Upload processing failed:", err);
-      res.status(500).json({ error: "Failed to process media upload: " + (err.message || "Unknown error") });
-    }
-  });
-
-  // --- API ENDPOINTS ---
-
-  // Categories
-  app.get("/api/categories", (req, res) => {
-    const seen = new Set<string>();
-    const deduplicated = memoryCategories.filter(c => {
-      const idKey = (c.id || c.name || '').toLowerCase();
-      if (!idKey || seen.has(idKey)) return false;
-      seen.add(idKey);
-      return true;
-    });
-    res.json(deduplicated);
-  });
-
-  app.post("/api/categories", (req, res) => {
-    if (!isAuthorizedAdmin(req)) {
-      return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
-    }
-    const { name, description, image, department, subCategories } = req.body;
-    if (!name || !name.trim()) {
-      return res.status(400).json({ error: "Category name is required." });
-    }
-
-    const cleanName = name.trim();
-    const catId = req.body.id || cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-
-    const newCategory: Category = {
-      id: catId,
-      name: cleanName,
-      description: description?.trim() || `${cleanName} luxury collection.`,
-      image: image || "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&q=80&w=800",
-      department: department || "Fashion",
-      subCategories: Array.isArray(subCategories) ? subCategories : (typeof subCategories === 'string' ? subCategories.split(',').map((s: string) => s.trim()).filter(Boolean) : [])
-    };
-
-    const existingIdx = memoryCategories.findIndex(c => c.id === newCategory.id || c.name.toLowerCase() === newCategory.name.toLowerCase());
-    if (existingIdx !== -1) {
-      memoryCategories[existingIdx] = { ...memoryCategories[existingIdx], ...newCategory };
     } else {
-      memoryCategories.push(newCategory);
+      buffer = Buffer.from(data, "base64");
+      if (mimeType?.includes("mp4")) ext = "mp4";
+      else if (mimeType?.includes("webm")) ext = "webm";
+      else if (mimeType?.includes("webp")) ext = "webp";
+      else if (mimeType?.includes("png")) ext = "png";
     }
 
-    res.status(201).json(newCategory);
-  });
+    const randomSuffix = crypto.randomBytes(4).toString("hex");
+    const cleanFilename = `media-${Date.now()}-${randomSuffix}.${ext}`;
+    const savedUrl = await persistMediaFile(buffer, cleanFilename, detectedMime);
 
-  app.delete("/api/categories", (req, res) => {
-    if (!isAuthorizedAdmin(req)) {
-      return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
-    }
-    memoryCategories = [];
-    res.json({ success: true, count: 0 });
-  });
+    res.json({ url: savedUrl, filename: cleanFilename });
+  } catch (err: any) {
+    console.error("Upload processing failed:", err);
+    res.status(500).json({ error: "Failed to process media upload: " + (err.message || "Unknown error") });
+  }
+});
 
-  app.delete("/api/categories/:id", (req, res) => {
-    if (!isAuthorizedAdmin(req)) {
-      return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
+// --- API ENDPOINTS ---
+
+// Categories (Database-backed with Supabase & PostgreSQL sync)
+app.get(["/api/categories", "/categories"], async (req, res) => {
+  try {
+    const { data, error } = await supabase.from("categories").select("*").order("name", { ascending: true });
+    if (!error && Array.isArray(data) && data.length > 0) {
+      return res.json(data.map(mapDbCategory));
     }
-    const targetId = req.params.id.toLowerCase();
-    memoryCategories = memoryCategories.filter(c => c.id.toLowerCase() !== targetId && c.name.toLowerCase() !== targetId);
-    res.json({ success: true });
+  } catch (e) {
+    console.warn("Supabase categories fetch note:", e);
+  }
+
+  if (dbPool) {
+    try {
+      const dbRes = await dbPool.query("SELECT * FROM categories ORDER BY name ASC");
+      if (dbRes.rows.length > 0) {
+        return res.json(dbRes.rows.map(mapDbCategory));
+      }
+    } catch (e) {}
+  }
+
+  const seen = new Set<string>();
+  const deduplicated = memoryCategories.filter(c => {
+    const idKey = (c.id || c.name || '').toLowerCase();
+    if (!idKey || seen.has(idKey)) return false;
+    seen.add(idKey);
+    return true;
   });
+  res.json(deduplicated);
+});
+
+app.post(["/api/categories", "/categories"], async (req, res) => {
+  if (!isAuthorizedAdmin(req)) {
+    return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
+  }
+  const { name, description, image, department, subCategories } = req.body;
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: "Category name is required." });
+  }
+
+  const cleanName = name.trim();
+  const catId = req.body.id || cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+  const newCategory: Category = {
+    id: catId,
+    name: cleanName,
+    description: description?.trim() || `${cleanName} luxury collection.`,
+    image: image || "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&q=80&w=800",
+    department: department || "Fashion",
+    subCategories: Array.isArray(subCategories) ? subCategories : (typeof subCategories === 'string' ? subCategories.split(',').map((s: string) => s.trim()).filter(Boolean) : [])
+  };
+
+  const existingIdx = memoryCategories.findIndex(c => c.id === newCategory.id || c.name.toLowerCase() === newCategory.name.toLowerCase());
+  if (existingIdx !== -1) {
+    memoryCategories[existingIdx] = { ...memoryCategories[existingIdx], ...newCategory };
+  } else {
+    memoryCategories.push(newCategory);
+  }
+
+  // Persist to Supabase
+  try {
+    await supabase.from("categories").upsert({
+      id: newCategory.id,
+      name: newCategory.name,
+      description: newCategory.description,
+      image: newCategory.image,
+      department: newCategory.department,
+      sub_categories: newCategory.subCategories
+    });
+  } catch (err: any) {
+    console.warn("Supabase category upsert note:", err.message);
+  }
+
+  // Persist to PostgreSQL pool
+  if (dbPool) {
+    try {
+      await dbPool.query(
+        `INSERT INTO categories (id, name, description, image, department, sub_categories)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (id) DO UPDATE SET
+           name = EXCLUDED.name,
+           description = EXCLUDED.description,
+           image = EXCLUDED.image,
+           department = EXCLUDED.department,
+           sub_categories = EXCLUDED.sub_categories`,
+        [newCategory.id, newCategory.name, newCategory.description, newCategory.image, newCategory.department, JSON.stringify(newCategory.subCategories)]
+      );
+    } catch (dbErr: any) {
+      console.warn("PostgreSQL category upsert note:", dbErr.message);
+    }
+  }
+
+  res.status(201).json(newCategory);
+});
+
+app.delete(["/api/categories", "/categories"], async (req, res) => {
+  if (!isAuthorizedAdmin(req)) {
+    return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
+  }
+  memoryCategories = [];
+  try {
+    await supabase.from("categories").delete().neq("id", "none_placeholder_safe");
+  } catch (e) {}
+  if (dbPool) {
+    try {
+      await dbPool.query("DELETE FROM categories;");
+    } catch (e) {}
+  }
+  res.json({ success: true, count: 0 });
+});
+
+app.delete(["/api/categories/:id", "/categories/:id"], async (req, res) => {
+  if (!isAuthorizedAdmin(req)) {
+    return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
+  }
+  const targetId = req.params.id.toLowerCase();
+  memoryCategories = memoryCategories.filter(c => c.id.toLowerCase() !== targetId && c.name.toLowerCase() !== targetId);
+
+  try {
+    await supabase.from("categories").delete().eq("id", targetId);
+  } catch (e) {}
+
+  if (dbPool) {
+    try {
+      await dbPool.query("DELETE FROM categories WHERE id = $1", [targetId]);
+    } catch (e) {}
+  }
+
+  res.json({ success: true });
+});
 
   async function sanitizeHomepageSettingsAsync(settings: any) {
     if (!settings || typeof settings !== 'object') return settings;
@@ -704,46 +849,85 @@ function sanitizePhoneNumbers(obj: any): any {
   return obj;
 }
 
+  // Default rich fallback settings with WhatsApp and Social Links
+  const DEFAULT_RICH_SETTINGS: HomepageSettings = {
+    heroFashionImage: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&q=80&w=1200',
+    heroFashionTitle: 'Haute Couture & Fine Leather',
+    heroFashionEyebrow: 'Maison Collection 2026',
+    heroFashionActive: true,
+    heroBeautyImage: 'https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?auto=format&fit=crop&q=80&w=1200',
+    heroBeautyTitle: 'Exquisite Parfumerie & Care',
+    heroBeautyEyebrow: 'Private Reserve',
+    heroBeautyActive: true,
+    additionalBanners: [],
+    whatsappNumber: '+966500000000',
+    whatsappGreeting: 'Hello Maison Lana Concierge, I would like assistance with an inquiry.',
+    whatsappFloatingActive: true,
+    whatsappEnabled: true,
+    socialLinks: {
+      whatsapp: 'https://wa.me/966500000000',
+      instagram: 'https://instagram.com/maisonlana',
+      tiktok: 'https://tiktok.com/@maisonlana',
+      facebook: 'https://facebook.com/maisonlana',
+      snapchat: 'https://snapchat.com/add/maisonlana'
+    },
+    contactInfo: {
+      storeName: 'Maison Lana Flagship Atelier',
+      whatsappNumber: '+966500000000',
+      whatsappGreeting: 'Welcome to Maison Lana Private Client Care.',
+      whatsappFloatingActive: true,
+      whatsappEnabled: true,
+      contactEmail: 'concierge@maisonlana.com',
+      contactPhone: '+966 50 000 0000',
+      address: 'Prince Muhammad Bin Abdulaziz Rd, Al Olaya',
+      city: 'Riyadh, Saudi Arabia',
+      businessHours: 'Sat - Thu: 10:00 AM - 10:00 PM'
+    }
+  };
+
   // Homepage Settings & Hero Banners Control
-  app.get("/api/homepage-settings", async (req, res) => {
+  app.get(["/api/homepage-settings", "/homepage-settings"], async (req, res) => {
+    // 1. Try Supabase
     try {
-      const dbRes = await dbPool.query("SELECT id, settings FROM homepage_settings ORDER BY id DESC LIMIT 1");
-      if (dbRes.rows.length > 0) {
-        const raw = sanitizePhoneNumbers(dbRes.rows[0].settings);
-        memoryHomepageSettings = raw;
-        try {
-          fs.writeFileSync(HOMEPAGE_SETTINGS_FILE, JSON.stringify(raw, null, 2));
-        } catch (e) {}
-        return res.json(raw);
+      const { data, error } = await supabase.from("homepage_settings").select("settings").order("id", { ascending: false }).limit(1).maybeSingle();
+      if (!error && data && data.settings) {
+        const raw = sanitizePhoneNumbers(data.settings);
+        memoryHomepageSettings = { ...DEFAULT_RICH_SETTINGS, ...raw };
+        return res.json(memoryHomepageSettings);
       }
     } catch (e) {
-      console.warn("DB fetch failed for homepage-settings:", e);
+      console.warn("Supabase homepage-settings fetch note:", e);
     }
 
-    // Fallback cache
+    // 2. Try PostgreSQL dbPool
+    if (dbPool) {
+      try {
+        const dbRes = await dbPool.query("SELECT id, settings FROM homepage_settings ORDER BY id DESC LIMIT 1");
+        if (dbRes.rows.length > 0) {
+          const raw = sanitizePhoneNumbers(dbRes.rows[0].settings);
+          memoryHomepageSettings = { ...DEFAULT_RICH_SETTINGS, ...raw };
+          return res.json(memoryHomepageSettings);
+        }
+      } catch (e) {
+        console.warn("DB fetch failed for homepage-settings:", e);
+      }
+    }
+
+    // 3. Fallback cache with defaults
     if (memoryHomepageSettings && Object.keys(memoryHomepageSettings).length > 0) {
-      return res.json(sanitizePhoneNumbers(memoryHomepageSettings));
+      return res.json(sanitizePhoneNumbers({ ...DEFAULT_RICH_SETTINGS, ...memoryHomepageSettings }));
     }
 
-    res.json({
-      heroFashionImage: '',
-      heroFashionTitle: 'Fashion & Accessories',
-      heroBeautyImage: '',
-      heroBeautyTitle: 'Fragrance & Beauty',
-      heroFashionActive: true,
-      heroBeautyActive: true,
-      additionalBanners: []
-    });
+    res.json(DEFAULT_RICH_SETTINGS);
   });
 
-  app.post("/api/homepage-settings", async (req, res) => {
+  app.post(["/api/homepage-settings", "/homepage-settings"], async (req, res) => {
     if (!isAuthorizedAdmin(req)) {
       return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
     }
     
     try {
-      const dbRes = await dbPool.query("SELECT settings FROM homepage_settings ORDER BY id DESC LIMIT 1");
-      let currentSettings = dbRes.rows.length > 0 ? dbRes.rows[0].settings : (memoryHomepageSettings || {});
+      let currentSettings = memoryHomepageSettings || DEFAULT_RICH_SETTINGS;
       
       const merged = {
         ...currentSettings,
@@ -751,27 +935,41 @@ function sanitizePhoneNumbers(obj: any): any {
       };
 
       const updatedSettings = await sanitizeHomepageSettingsAsync(merged);
-
       memoryHomepageSettings = updatedSettings;
-      try {
-        fs.writeFileSync(HOMEPAGE_SETTINGS_FILE, JSON.stringify(updatedSettings, null, 2));
-      } catch (e) {}
 
-      await dbPool.query("INSERT INTO homepage_settings (settings) VALUES ($1)", [JSON.stringify(updatedSettings)]);
+      // 1. Persist to Supabase
+      try {
+        await supabase.from("homepage_settings").upsert({
+          id: 1,
+          settings: updatedSettings
+        });
+      } catch (err: any) {
+        console.warn("Supabase homepage-settings save note:", err.message);
+      }
+
+      // 2. Persist to PostgreSQL
+      if (dbPool) {
+        try {
+          await dbPool.query("INSERT INTO homepage_settings (settings) VALUES ($1)", [JSON.stringify(updatedSettings)]);
+        } catch (dbErr: any) {
+          console.warn("PostgreSQL homepage-settings save note:", dbErr.message);
+        }
+      }
+
       res.json(updatedSettings);
-    } catch (e) {
-      console.error("Failed to save homepage settings to DB:", e);
-      res.status(500).json({ error: "Failed to save settings to DB" });
+    } catch (e: any) {
+      console.error("Failed to save homepage settings:", e);
+      res.status(500).json({ error: "Failed to save settings: " + (e.message || "Unknown error") });
     }
   });
 
   // Roadmap
-  app.get("/api/roadmap", (req, res) => {
+  app.get(["/api/roadmap", "/roadmap"], (req, res) => {
     res.json(ROADMAP_PHASES);
   });
 
   // Partner Stores (Suppliers)
-  app.get("/api/stores", async (req, res) => {
+  app.get(["/api/stores", "/stores"], async (req, res) => {
     try {
       const { data, error } = await supabase.from("stores").select("*").order("created_at", { ascending: true });
       if (!error && data && data.length > 0) {
@@ -783,7 +981,7 @@ function sanitizePhoneNumbers(obj: any): any {
     res.json(memoryStores);
   });
 
-  app.post("/api/stores", async (req, res) => {
+  app.post(["/api/stores", "/stores"], async (req, res) => {
     if (!isAuthorizedAdmin(req)) {
       return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
     }
@@ -815,7 +1013,7 @@ function sanitizePhoneNumbers(obj: any): any {
     res.status(201).json(newStore);
   });
 
-  app.put("/api/stores/:id", async (req, res) => {
+  app.put(["/api/stores/:id", "/stores/:id"], async (req, res) => {
     if (!isAuthorizedAdmin(req)) {
       return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
     }
@@ -841,57 +1039,163 @@ function sanitizePhoneNumbers(obj: any): any {
     res.json({ id: req.params.id, ...req.body });
   });
 
-  // Products
-  app.get("/api/products", async (req, res) => {
+  // Products (Database-backed with Supabase & PostgreSQL sync)
+  app.get(["/api/products", "/products"], async (req, res) => {
+    // 1. Try Supabase
     try {
       const { data, error } = await supabase.from("products").select("*").order("created_at", { ascending: true });
-      if (!error && Array.isArray(data)) {
+      if (!error && Array.isArray(data) && data.length > 0) {
         return res.json(data.map(mapDbProduct));
       }
     } catch (e) {
       console.warn("Supabase products fetch failed, using fallback:", e);
     }
+
+    // 2. Try PostgreSQL dbPool
+    if (dbPool) {
+      try {
+        const dbRes = await dbPool.query("SELECT * FROM products ORDER BY created_at ASC");
+        if (dbRes.rows.length > 0) {
+          return res.json(dbRes.rows.map(mapDbProduct));
+        }
+      } catch (e) {}
+    }
+
+    // 3. Fallback memory catalog
     res.json(memoryProducts);
   });
 
-  app.post("/api/products", async (req, res) => {
+  app.post(["/api/products", "/products"], async (req, res) => {
     if (!isAuthorizedAdmin(req)) {
       return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
     }
+
+    const priceVal = Number(req.body.retailPrice ?? req.body.price ?? 150);
     const newProduct: Product = {
-      id: `prod-${Date.now()}`,
+      id: req.body.id || `prod-${Date.now()}`,
       name: req.body.name || "New Luxury Item",
+      brand: req.body.brand || "LANA",
       category: req.body.category || "Fragrance",
-      retailPrice: Number(req.body.retailPrice) || 150,
+      subCategory: req.body.subCategory,
+      department: req.body.department || "Fashion",
+      gender: req.body.gender,
+      retailPrice: priceVal,
+      price: priceVal,
+      originalPrice: req.body.originalPrice ? Number(req.body.originalPrice) : undefined,
       image: req.body.image || "https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?auto=format&fit=crop&q=80&w=600",
+      secondaryImage: req.body.secondaryImage,
+      images: Array.isArray(req.body.images) && req.body.images.length > 0 ? req.body.images : [req.body.image || "https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?auto=format&fit=crop&q=80&w=600"],
       description: req.body.description || "Crafted for the discerning senses.",
-      volume: req.body.volume || "100ml",
-      isActive: true,
-      supplierInventory: req.body.supplierInventory || []
+      volume: req.body.volume || "",
+      sizes: Array.isArray(req.body.sizes) ? req.body.sizes : undefined,
+      colors: Array.isArray(req.body.colors) ? req.body.colors : undefined,
+      details: Array.isArray(req.body.details) ? req.body.details : undefined,
+      ingredients: req.body.ingredients,
+      savoirFaire: req.body.savoirFaire,
+      rating: Number(req.body.rating || 5.0),
+      reviewCount: Number(req.body.reviewCount || 1),
+      isNew: req.body.isNew !== undefined ? Boolean(req.body.isNew) : true,
+      isFeatured: req.body.isFeatured !== undefined ? Boolean(req.body.isFeatured) : false,
+      isBestSeller: req.body.isBestSeller !== undefined ? Boolean(req.body.isBestSeller) : false,
+      isExclusive: req.body.isExclusive !== undefined ? Boolean(req.body.isExclusive) : false,
+      isActive: req.body.isActive !== false,
+      supplierInventory: Array.isArray(req.body.supplierInventory) ? req.body.supplierInventory : []
     };
 
+    // 1. Persist to Supabase
     try {
-      const { error } = await supabase.from("products").insert({
+      const { error } = await supabase.from("products").upsert({
         id: newProduct.id,
         name: newProduct.name,
+        brand: newProduct.brand,
         category: newProduct.category,
+        sub_category: newProduct.subCategory,
+        department: newProduct.department,
+        gender: newProduct.gender,
         retail_price: newProduct.retailPrice,
+        original_price: newProduct.originalPrice,
         image: newProduct.image,
+        secondary_image: newProduct.secondaryImage,
+        images: newProduct.images,
         description: newProduct.description,
         volume: newProduct.volume,
+        sizes: newProduct.sizes,
+        colors: newProduct.colors,
+        details: newProduct.details,
+        ingredients: newProduct.ingredients,
+        savoir_faire: newProduct.savoirFaire,
+        rating: newProduct.rating,
+        review_count: newProduct.reviewCount,
+        is_new: newProduct.isNew,
+        is_featured: newProduct.isFeatured,
+        is_bestseller: newProduct.isBestSeller,
+        is_exclusive: newProduct.isExclusive,
         is_active: newProduct.isActive,
         supplier_inventory: newProduct.supplierInventory
       });
-      if (error) console.error("Supabase insert error:", error);
+      if (error) console.error("Supabase product insert error:", error);
     } catch (e: any) {
-      console.warn("Supabase product insert fallback:", e);
+      console.warn("Supabase product insert fallback:", e.message);
     }
 
-    memoryProducts.push(newProduct);
+    // 2. Persist to PostgreSQL pool
+    if (dbPool) {
+      try {
+        await dbPool.query(
+          `INSERT INTO products (
+            id, name, brand, category, sub_category, department, gender, retail_price, original_price,
+            image, secondary_image, images, description, volume, sizes, colors, details, ingredients,
+            savoir_faire, rating, review_count, is_new, is_featured, is_bestseller, is_exclusive, is_active, supplier_inventory
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+          ON CONFLICT (id) DO UPDATE SET
+            name = EXCLUDED.name,
+            brand = EXCLUDED.brand,
+            category = EXCLUDED.category,
+            sub_category = EXCLUDED.sub_category,
+            department = EXCLUDED.department,
+            gender = EXCLUDED.gender,
+            retail_price = EXCLUDED.retail_price,
+            original_price = EXCLUDED.original_price,
+            image = EXCLUDED.image,
+            secondary_image = EXCLUDED.secondary_image,
+            images = EXCLUDED.images,
+            description = EXCLUDED.description,
+            volume = EXCLUDED.volume,
+            sizes = EXCLUDED.sizes,
+            colors = EXCLUDED.colors,
+            details = EXCLUDED.details,
+            ingredients = EXCLUDED.ingredients,
+            savoir_faire = EXCLUDED.savoir_faire,
+            rating = EXCLUDED.rating,
+            review_count = EXCLUDED.review_count,
+            is_new = EXCLUDED.is_new,
+            is_featured = EXCLUDED.is_featured,
+            is_bestseller = EXCLUDED.is_bestseller,
+            is_exclusive = EXCLUDED.is_exclusive,
+            is_active = EXCLUDED.is_active,
+            supplier_inventory = EXCLUDED.supplier_inventory`,
+          [
+            newProduct.id, newProduct.name, newProduct.brand, newProduct.category, newProduct.subCategory, newProduct.department, newProduct.gender,
+            newProduct.retailPrice, newProduct.originalPrice || null, newProduct.image, newProduct.secondaryImage || null,
+            JSON.stringify(newProduct.images), newProduct.description, newProduct.volume || null,
+            newProduct.sizes ? JSON.stringify(newProduct.sizes) : null,
+            newProduct.colors ? JSON.stringify(newProduct.colors) : null,
+            newProduct.details ? JSON.stringify(newProduct.details) : null,
+            newProduct.ingredients || null, newProduct.savoirFaire || null,
+            newProduct.rating, newProduct.reviewCount, newProduct.isNew, newProduct.isFeatured, newProduct.isBestSeller, newProduct.isExclusive,
+            newProduct.isActive, JSON.stringify(newProduct.supplierInventory)
+          ]
+        );
+      } catch (dbErr: any) {
+        console.warn("PostgreSQL product insert note:", dbErr.message);
+      }
+    }
+
+    memoryProducts.unshift(newProduct);
     res.status(201).json(newProduct);
   });
 
-  app.put("/api/products/:id", async (req, res) => {
+  app.put(["/api/products/:id", "/products/:id"], async (req, res) => {
     if (!isAuthorizedAdmin(req)) {
       return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
     }
@@ -905,11 +1209,30 @@ function sanitizePhoneNumbers(obj: any): any {
     try {
       const updateData: any = {};
       if (req.body.name !== undefined) updateData.name = req.body.name;
+      if (req.body.brand !== undefined) updateData.brand = req.body.brand;
       if (req.body.category !== undefined) updateData.category = req.body.category;
+      if (req.body.subCategory !== undefined) updateData.sub_category = req.body.subCategory;
+      if (req.body.department !== undefined) updateData.department = req.body.department;
+      if (req.body.gender !== undefined) updateData.gender = req.body.gender;
       if (req.body.retailPrice !== undefined) updateData.retail_price = Number(req.body.retailPrice);
+      if (req.body.price !== undefined && req.body.retailPrice === undefined) updateData.retail_price = Number(req.body.price);
+      if (req.body.originalPrice !== undefined) updateData.original_price = Number(req.body.originalPrice);
       if (req.body.image !== undefined) updateData.image = req.body.image;
+      if (req.body.secondaryImage !== undefined) updateData.secondary_image = req.body.secondaryImage;
+      if (req.body.images !== undefined) updateData.images = req.body.images;
       if (req.body.description !== undefined) updateData.description = req.body.description;
       if (req.body.volume !== undefined) updateData.volume = req.body.volume;
+      if (req.body.sizes !== undefined) updateData.sizes = req.body.sizes;
+      if (req.body.colors !== undefined) updateData.colors = req.body.colors;
+      if (req.body.details !== undefined) updateData.details = req.body.details;
+      if (req.body.ingredients !== undefined) updateData.ingredients = req.body.ingredients;
+      if (req.body.savoirFaire !== undefined) updateData.savoir_faire = req.body.savoirFaire;
+      if (req.body.rating !== undefined) updateData.rating = Number(req.body.rating);
+      if (req.body.reviewCount !== undefined) updateData.review_count = Number(req.body.reviewCount);
+      if (req.body.isNew !== undefined) updateData.is_new = Boolean(req.body.isNew);
+      if (req.body.isFeatured !== undefined) updateData.is_featured = Boolean(req.body.isFeatured);
+      if (req.body.isBestSeller !== undefined) updateData.is_bestseller = Boolean(req.body.isBestSeller);
+      if (req.body.isExclusive !== undefined) updateData.is_exclusive = Boolean(req.body.isExclusive);
       if (req.body.isActive !== undefined) updateData.is_active = req.body.isActive;
       if (req.body.supplierInventory !== undefined) updateData.supplier_inventory = req.body.supplierInventory;
 
@@ -919,21 +1242,46 @@ function sanitizePhoneNumbers(obj: any): any {
       console.warn("Product update database sync fallback:", e.message);
     }
 
+    if (dbPool) {
+      try {
+        await dbPool.query(
+          `UPDATE products SET
+            name = COALESCE($1, name),
+            brand = COALESCE($2, brand),
+            category = COALESCE($3, category),
+            sub_category = COALESCE($4, sub_category),
+            department = COALESCE($5, department),
+            retail_price = COALESCE($6, retail_price),
+            image = COALESCE($7, image),
+            description = COALESCE($8, description),
+            volume = COALESCE($9, volume),
+            is_active = COALESCE($10, is_active)
+          WHERE id = $11`,
+          [
+            req.body.name || null, req.body.brand || null, req.body.category || null, req.body.subCategory || null,
+            req.body.department || null, req.body.retailPrice ? Number(req.body.retailPrice) : null,
+            req.body.image || null, req.body.description || null, req.body.volume || null,
+            req.body.isActive !== undefined ? req.body.isActive : null, req.params.id
+          ]
+        );
+      } catch (e) {}
+    }
+
     if (prodIndex !== -1) {
       return res.json(memoryProducts[prodIndex]);
     }
     res.json({ id: req.params.id, ...req.body });
   });
 
-  app.delete("/api/products/:id", async (req, res) => {
+  app.delete(["/api/products/:id", "/products/:id"], async (req, res) => {
     if (!isAuthorizedAdmin(req)) {
       return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
     }
     try {
-      await Promise.all([
-        supabase.from("products").delete().eq("id", req.params.id),
-        dbPool.query("DELETE FROM public.products WHERE id = $1", [req.params.id])
-      ]);
+      await supabase.from("products").delete().eq("id", req.params.id);
+      if (dbPool) {
+        await dbPool.query("DELETE FROM public.products WHERE id = $1", [req.params.id]);
+      }
     } catch (e: any) {
       console.warn("Product delete database sync fallback:", e.message);
     }
@@ -942,15 +1290,15 @@ function sanitizePhoneNumbers(obj: any): any {
     res.json({ success: true });
   });
 
-  app.delete("/api/products", async (req, res) => {
+  app.delete(["/api/products", "/products"], async (req, res) => {
     if (!isAuthorizedAdmin(req)) {
       return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
     }
     try {
-      await Promise.all([
-        supabase.from("products").delete().neq("id", "none_placeholder_safe_delete"),
-        dbPool.query("DELETE FROM public.products;")
-      ]);
+      await supabase.from("products").delete().neq("id", "none_placeholder_safe_delete");
+      if (dbPool) {
+        await dbPool.query("DELETE FROM public.products;");
+      }
     } catch (e: any) {
       console.warn("Delete all products error:", e.message);
     }
@@ -958,15 +1306,21 @@ function sanitizePhoneNumbers(obj: any): any {
     res.json({ success: true, count: 0 });
   });
 
-  app.post("/api/admin/clear-catalog", async (req, res) => {
+  app.post(["/api/admin/clear-catalog", "/admin/clear-catalog"], async (req, res) => {
     if (!isAuthorizedAdmin(req)) {
       return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
     }
     try {
       await Promise.all([
         supabase.from("products").delete().neq("id", "none_placeholder_safe_delete"),
-        dbPool.query("DELETE FROM public.products;")
+        supabase.from("categories").delete().neq("id", "none_placeholder_safe_delete")
       ]);
+      if (dbPool) {
+        await Promise.all([
+          dbPool.query("DELETE FROM public.products;"),
+          dbPool.query("DELETE FROM public.categories;")
+        ]);
+      }
     } catch (e: any) {
       console.warn("Clear catalog db warning:", e.message);
     }
@@ -1197,32 +1551,57 @@ function sanitizePhoneNumbers(obj: any): any {
       // Register order in memory state instantly
       memoryOrders.unshift(newOrder);
 
-      // Persist directly to PostgreSQL
+      // 1. Persist to Supabase
       try {
-        await dbPool.query(
-          `INSERT INTO public.orders (id, customer_name, customer_phone, delivery_address, city, notes, items, total_price, status, payment_status, payment_method, customer_email, created_at, assigned_store_ids)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-           ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, payment_status = EXCLUDED.payment_status`,
-          [
-            newOrder.id,
-            newOrder.customerName,
-            newOrder.customerPhone,
-            newOrder.deliveryAddress,
-            newOrder.city,
-            (newOrder.notes ? newOrder.notes + " | " : "") + (newOrder.customerEmail ? `Client: ${newOrder.customerEmail}` : ""),
-            JSON.stringify(newOrder.items),
-            newOrder.totalPrice,
-            newOrder.status,
-            newOrder.paymentStatus,
-            newOrder.paymentMethod,
-            newOrder.customerEmail,
-            newOrder.createdAt,
-            JSON.stringify(newOrder.assignedStoreIds)
-          ]
-        );
-        console.log(`[ORDER] Order ${orderId} successfully persisted to PostgreSQL.`);
-      } catch (dbErr: any) {
-        console.error("[ORDER] Direct PostgreSQL order insert warning:", dbErr.message);
+        await supabase.from("orders").upsert({
+          id: newOrder.id,
+          customer_name: newOrder.customerName,
+          customer_phone: newOrder.customerPhone,
+          customer_email: newOrder.customerEmail,
+          delivery_address: newOrder.deliveryAddress,
+          city: newOrder.city,
+          postal_code: newOrder.postalCode,
+          notes: newOrder.notes,
+          items: newOrder.items,
+          total_price: newOrder.totalPrice,
+          status: newOrder.status,
+          payment_status: newOrder.paymentStatus,
+          payment_method: newOrder.paymentMethod,
+          created_at: newOrder.createdAt,
+          assigned_store_ids: newOrder.assignedStoreIds
+        });
+      } catch (sbErr: any) {
+        console.warn("[ORDER] Supabase order insert note:", sbErr.message);
+      }
+
+      // 2. Persist directly to PostgreSQL
+      if (dbPool) {
+        try {
+          await dbPool.query(
+            `INSERT INTO public.orders (id, customer_name, customer_phone, delivery_address, city, notes, items, total_price, status, payment_status, payment_method, customer_email, created_at, assigned_store_ids)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+             ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, payment_status = EXCLUDED.payment_status`,
+            [
+              newOrder.id,
+              newOrder.customerName,
+              newOrder.customerPhone,
+              newOrder.deliveryAddress,
+              newOrder.city,
+              (newOrder.notes ? newOrder.notes + " | " : "") + (newOrder.customerEmail ? `Client: ${newOrder.customerEmail}` : ""),
+              JSON.stringify(newOrder.items),
+              newOrder.totalPrice,
+              newOrder.status,
+              newOrder.paymentStatus,
+              newOrder.paymentMethod,
+              newOrder.customerEmail,
+              newOrder.createdAt,
+              JSON.stringify(newOrder.assignedStoreIds)
+            ]
+          );
+          console.log(`[ORDER] Order ${orderId} successfully persisted to PostgreSQL.`);
+        } catch (dbErr: any) {
+          console.error("[ORDER] Direct PostgreSQL order insert warning:", dbErr.message);
+        }
       }
 
       // Format secure WhatsApp message details (No plain passwords or unsafe links)
@@ -1411,14 +1790,27 @@ function sanitizePhoneNumbers(obj: any): any {
 
       memoryOrders[orderIndex] = currentOrder;
 
-      // Persist update directly to PostgreSQL and Supabase
+      // 1. Persist update to Supabase
       try {
-        await dbPool.query(
-          "UPDATE public.orders SET status = COALESCE($1, status), payment_status = COALESCE($2, payment_status), assigned_store_ids = COALESCE($3, assigned_store_ids) WHERE id = $4",
-          [req.body.status || null, req.body.paymentStatus || null, req.body.assignedStoreIds ? JSON.stringify(req.body.assignedStoreIds) : null, orderId]
-        );
-      } catch (e) {
-        console.warn("Direct PG order update warning:", e);
+        const updatePayload: any = {};
+        if (req.body.status) updatePayload.status = req.body.status;
+        if (req.body.paymentStatus) updatePayload.payment_status = req.body.paymentStatus;
+        if (req.body.assignedStoreIds) updatePayload.assigned_store_ids = req.body.assignedStoreIds;
+        await supabase.from("orders").update(updatePayload).eq("id", orderId);
+      } catch (sbErr: any) {
+        console.warn("Supabase order update note:", sbErr.message);
+      }
+
+      // 2. Persist update directly to PostgreSQL
+      if (dbPool) {
+        try {
+          await dbPool.query(
+            "UPDATE public.orders SET status = COALESCE($1, status), payment_status = COALESCE($2, payment_status), assigned_store_ids = COALESCE($3, assigned_store_ids) WHERE id = $4",
+            [req.body.status || null, req.body.paymentStatus || null, req.body.assignedStoreIds ? JSON.stringify(req.body.assignedStoreIds) : null, orderId]
+          );
+        } catch (e: any) {
+          console.warn("Direct PG order update warning:", e.message);
+        }
       }
 
       return res.json(currentOrder);

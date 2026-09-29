@@ -91,11 +91,11 @@ export default function App() {
     order: any;
   } | null>(null);
 
-  // Fetch initial data & live catalog synchronization
-  const syncProducts = useCallback(async () => {
+  // Fetch initial data & live catalog synchronization with resilient retry
+  const syncProducts = useCallback(async (retryCount = 0) => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
 
       const [prodRes, homeRes, catRes] = await Promise.all([
         fetch('/api/products', { signal: controller.signal }).catch(() => null),
@@ -114,8 +114,12 @@ export default function App() {
 
       if (Array.isArray(prodData) && prodData.length > 0) {
         setProducts(prodData);
-      } else {
-        setProducts(ALL_LUXURY_PRODUCTS);
+        try {
+          localStorage.setItem('lana_products_cache', JSON.stringify(prodData));
+        } catch {}
+      } else if (retryCount < 2 && (!prodRes || !prodRes.ok)) {
+        // Cold start retry
+        setTimeout(() => syncProducts(retryCount + 1), 2500);
       }
 
       let homeData: any = null;
@@ -142,13 +146,15 @@ export default function App() {
       }
       if (Array.isArray(catData) && catData.length > 0) {
         setCategories(catData);
-      } else {
-        setCategories(PRODUCT_CATEGORIES);
+        try {
+          localStorage.setItem('lana_categories_cache', JSON.stringify(catData));
+        } catch {}
       }
     } catch (error) {
-      console.error('Error syncing product & homepage data:', error);
-      setProducts(ALL_LUXURY_PRODUCTS);
-      setCategories(PRODUCT_CATEGORIES);
+      console.warn('Live catalog sync note:', error);
+      if (retryCount < 2) {
+        setTimeout(() => syncProducts(retryCount + 1), 2500);
+      }
     } finally {
       setLoading(false);
     }
