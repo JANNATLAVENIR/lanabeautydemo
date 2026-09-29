@@ -236,6 +236,28 @@ async function autoSeedProducts() {
     for (const p of ALL_LUXURY_PRODUCTS) {
       await poolInsertProduct(p);
     }
+    for (const c of PRODUCT_CATEGORIES) {
+      try {
+        await supabase.from("categories").upsert({
+          id: c.id,
+          name: c.name,
+          description: c.description,
+          image: c.image,
+          department: c.department || "Fashion",
+          sub_categories: c.subCategories || []
+        });
+      } catch (e) {}
+      if (dbPool) {
+        try {
+          await dbPool.query(
+            `INSERT INTO categories (id, name, description, image, department, sub_categories)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (id) DO NOTHING`,
+            [c.id, c.name, c.description, c.image, c.department || "Fashion", JSON.stringify(c.subCategories || [])]
+          );
+        } catch (e) {}
+      }
+    }
     memoryProducts = [...ALL_LUXURY_PRODUCTS];
     memoryCategories = [...PRODUCT_CATEGORIES];
     console.log(`[SEED] Catalog synchronized: ${ALL_LUXURY_PRODUCTS.length} products, ${PRODUCT_CATEGORIES.length} categories.`);
@@ -680,7 +702,10 @@ app.get(["/api/categories", "/categories"], async (req, res) => {
     seen.add(idKey);
     return true;
   });
-  res.json(deduplicated);
+  if (deduplicated.length > 0) {
+    return res.json(deduplicated);
+  }
+  res.json(PRODUCT_CATEGORIES);
 });
 
 app.post(["/api/categories", "/categories"], async (req, res) => {
@@ -892,7 +917,12 @@ function sanitizePhoneNumbers(obj: any): any {
       const { data, error } = await supabase.from("homepage_settings").select("settings").order("id", { ascending: false }).limit(1).maybeSingle();
       if (!error && data && data.settings) {
         const raw = sanitizePhoneNumbers(data.settings);
-        memoryHomepageSettings = { ...DEFAULT_RICH_SETTINGS, ...raw };
+        memoryHomepageSettings = {
+          ...DEFAULT_RICH_SETTINGS,
+          ...raw,
+          socialLinks: raw.socialLinks !== undefined ? raw.socialLinks : DEFAULT_RICH_SETTINGS.socialLinks,
+          contactInfo: raw.contactInfo !== undefined ? raw.contactInfo : DEFAULT_RICH_SETTINGS.contactInfo,
+        };
         return res.json(memoryHomepageSettings);
       }
     } catch (e) {
@@ -905,7 +935,12 @@ function sanitizePhoneNumbers(obj: any): any {
         const dbRes = await dbPool.query("SELECT id, settings FROM homepage_settings ORDER BY id DESC LIMIT 1");
         if (dbRes.rows.length > 0) {
           const raw = sanitizePhoneNumbers(dbRes.rows[0].settings);
-          memoryHomepageSettings = { ...DEFAULT_RICH_SETTINGS, ...raw };
+          memoryHomepageSettings = {
+            ...DEFAULT_RICH_SETTINGS,
+            ...raw,
+            socialLinks: raw.socialLinks !== undefined ? raw.socialLinks : DEFAULT_RICH_SETTINGS.socialLinks,
+            contactInfo: raw.contactInfo !== undefined ? raw.contactInfo : DEFAULT_RICH_SETTINGS.contactInfo,
+          };
           return res.json(memoryHomepageSettings);
         }
       } catch (e) {
@@ -931,11 +966,18 @@ function sanitizePhoneNumbers(obj: any): any {
       
       const merged = {
         ...currentSettings,
-        ...req.body
+        ...req.body,
+        socialLinks: req.body.socialLinks !== undefined ? req.body.socialLinks : currentSettings.socialLinks,
+        contactInfo: req.body.contactInfo !== undefined ? req.body.contactInfo : currentSettings.contactInfo,
       };
 
       const updatedSettings = await sanitizeHomepageSettingsAsync(merged);
       memoryHomepageSettings = updatedSettings;
+
+      // Persist to local cache file
+      try {
+        fs.writeFileSync(HOMEPAGE_SETTINGS_FILE, JSON.stringify(updatedSettings, null, 2), 'utf-8');
+      } catch (fsErr) {}
 
       // 1. Persist to Supabase
       try {

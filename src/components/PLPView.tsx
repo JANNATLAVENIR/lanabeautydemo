@@ -90,14 +90,14 @@ export const PLPView: React.FC<PLPViewProps> = ({
   // Track parent department context (FASHION vs BEAUTY vs ALL)
   const departmentContext = useMemo(() => {
     const custom = (customDepartment || initialDepartment || '').toUpperCase();
-    if (custom === 'FASHION' || custom.includes('FASHION')) return 'FASHION';
-    if (custom === 'BEAUTY' || custom.includes('BEAUTY')) return 'BEAUTY';
-    if (custom === 'BODYCARE' || custom.includes('BODY CARE') || custom.includes('BODYCARE')) return 'BODYCARE';
-    if (custom === 'ACCESSORIES' || custom.includes('ACCESSORIES')) return 'ACCESSORIES';
+    if (custom.includes('FASHION') || custom.includes('COUTURE') || custom.includes('READY')) return 'FASHION';
+    if (custom.includes('BEAUTY') || custom.includes('FRAGRANCE') || custom.includes('PERFUME')) return 'BEAUTY';
+    if (custom.includes('BODYCARE') || custom.includes('BODY CARE')) return 'BODYCARE';
+    if (custom.includes('ACCESSORIES') || custom.includes('JEWELRY')) return 'ACCESSORIES';
 
     const sel = (selectedCategory || initialCategory || 'ALL').toUpperCase();
-    if (FASHION_CATEGORIES.includes(sel)) return 'FASHION';
-    if (BEAUTY_CATEGORIES.includes(sel)) return 'BEAUTY';
+    if (FASHION_CATEGORIES.some(c => sel === c || sel.includes(c) || c.includes(sel))) return 'FASHION';
+    if (BEAUTY_CATEGORIES.some(c => sel === c || sel.includes(c) || c.includes(sel))) return 'BEAUTY';
     return 'ALL';
   }, [selectedCategory, initialCategory, initialDepartment, customDepartment]);
 
@@ -266,15 +266,19 @@ export const PLPView: React.FC<PLPViewProps> = ({
           const catDeptMatches = catObj && ((catObj.department || '').trim().toLowerCase() === targetDept || (catObj.department || '').trim().toLowerCase().includes(targetDept));
           if (!matchesDept && !catDeptMatches) return;
         } else if (departmentContext === 'FASHION') {
-          if (prodDept === 'BEAUTY' || BEAUTY_CATEGORIES.includes(prodCat)) return;
-          if (prodDept !== 'FASHION' && !FASHION_CATEGORIES.includes(prodCat)) return;
+          const isBeautyExclusive = (prodDept.includes('BEAUTY') || prodDept.includes('FRAGRANCE')) && BEAUTY_CATEGORIES.includes(prodCat);
+          if (isBeautyExclusive) return;
+          const isFashion = prodDept.includes('FASHION') || prodDept.includes('COUTURE') || prodDept.includes('ACCESSORIES') || FASHION_CATEGORIES.includes(prodCat) || prodCat.includes('BAG') || prodCat.includes('SHOE') || prodCat.includes('DRESS');
+          if (!isFashion) return;
         } else if (departmentContext === 'BEAUTY') {
-          if (prodDept === 'FASHION' || FASHION_CATEGORIES.includes(prodCat)) return;
-          if (prodDept !== 'BEAUTY' && !BEAUTY_CATEGORIES.includes(prodCat)) return;
+          const isFashionExclusive = (prodDept.includes('FASHION') || prodDept.includes('COUTURE')) && FASHION_CATEGORIES.includes(prodCat);
+          if (isFashionExclusive) return;
+          const isBeauty = prodDept.includes('BEAUTY') || prodDept.includes('FRAGRANCE') || prodDept.includes('SKINCARE') || prodDept.includes('BODYCARE') || BEAUTY_CATEGORIES.includes(prodCat) || prodCat.includes('PERFUME') || prodCat.includes('PARFUM') || prodCat.includes('OUD');
+          if (!isBeauty) return;
         } else if (departmentContext === 'BODYCARE' || initialDepartment === 'BODYCARE') {
-          if (!['BODYCARE', 'BODY CARE', 'DEODORANT', 'HAIRCARE'].includes(prodCat) && prodDept !== 'BODYCARE') return;
+          if (!['BODYCARE', 'BODY CARE', 'DEODORANT', 'HAIRCARE'].includes(prodCat) && !prodDept.includes('BODYCARE')) return;
         } else if (departmentContext === 'ACCESSORIES' || initialDepartment === 'ACCESSORIES') {
-          if (!['ACCESSORIES', 'BAGS', 'WATCHES', 'SHOES'].includes(prodCat) && prodDept !== 'ACCESSORIES') return;
+          if (!['ACCESSORIES', 'BAGS', 'WATCHES', 'SHOES'].includes(prodCat) && !prodDept.includes('ACCESSORIES')) return;
         }
         list.add(p.brand);
       });
@@ -306,7 +310,7 @@ export const PLPView: React.FC<PLPViewProps> = ({
           prodDesc.includes('infant');
         if (isChildItem) return false;
 
-        // 1. Strict Department Context Isolation (ha isku dhex qaasin)
+        // 1. Strict Department Context Isolation
         if (customDeptName && !['ALL', 'FASHION', 'BEAUTY', 'BODYCARE', 'ACCESSORIES'].includes(customDeptName.toUpperCase())) {
           const targetDept = customDeptName.trim().toLowerCase();
           const pDept = (product.department || '').trim().toLowerCase();
@@ -320,33 +324,37 @@ export const PLPView: React.FC<PLPViewProps> = ({
             return false;
           }
         }
-        // In Fashion domain, NEVER show Skincare, Makeup, Fragrance, Bodycare, Haircare, Deodorant
+        // In Fashion domain, NEVER show Skincare, Makeup, Fragrance unless department says Fashion
         else if (departmentContext === 'FASHION') {
-          if (BEAUTY_CATEGORIES.includes(prodCat) || prodDept === 'BEAUTY') {
+          const isBeautyExclusive = (prodDept.includes('BEAUTY') || prodDept.includes('FRAGRANCE')) && (BEAUTY_CATEGORIES.includes(prodCat) || prodCat.includes('PARFUM'));
+          if (isBeautyExclusive) {
             return false;
           }
-          if (!FASHION_CATEGORIES.includes(prodCat) && prodDept !== 'FASHION') {
+          const isFashion = prodDept.includes('FASHION') || prodDept.includes('COUTURE') || prodDept.includes('ACCESSORIES') || FASHION_CATEGORIES.includes(prodCat) || prodCat.includes('BAG') || prodCat.includes('SHOE') || prodCat.includes('DRESS') || prodCat.includes('CLOTH');
+          if (!isFashion) {
             return false;
           }
         } 
-        // In Beauty domain, NEVER show Dresses, Couture, Men's dress, Bags, Shoes, Watches, or Accessories
+        // In Beauty domain, NEVER show Dresses, Couture, Men's dress, Bags, Shoes unless department says Beauty
         else if (departmentContext === 'BEAUTY') {
-          if (FASHION_CATEGORIES.includes(prodCat) || prodDept === 'FASHION') {
+          const isFashionExclusive = (prodDept.includes('FASHION') || prodDept.includes('COUTURE')) && (FASHION_CATEGORIES.includes(prodCat) || prodCat.includes('BAG'));
+          if (isFashionExclusive) {
             return false;
           }
-          if (!BEAUTY_CATEGORIES.includes(prodCat) && prodDept !== 'BEAUTY') {
+          const isBeauty = prodDept.includes('BEAUTY') || prodDept.includes('FRAGRANCE') || prodDept.includes('SKINCARE') || prodDept.includes('BODYCARE') || BEAUTY_CATEGORIES.includes(prodCat) || prodCat.includes('PERFUME') || prodCat.includes('PARFUM') || prodCat.includes('OUD');
+          if (!isBeauty) {
             return false;
           }
         }
         // In Bodycare department
         else if (departmentContext === 'BODYCARE' || initialDepartment === 'BODYCARE') {
-          if (!['BODYCARE', 'BODY CARE', 'DEODORANT', 'HAIRCARE'].includes(prodCat) && prodDept !== 'BODYCARE') {
+          if (!['BODYCARE', 'BODY CARE', 'DEODORANT', 'HAIRCARE'].includes(prodCat) && !prodDept.includes('BODYCARE')) {
             return false;
           }
         }
         // In Accessories department
         else if (departmentContext === 'ACCESSORIES' || initialDepartment === 'ACCESSORIES') {
-          if (!['ACCESSORIES', 'BAGS', 'WATCHES', 'SHOES'].includes(prodCat) && prodDept !== 'ACCESSORIES') {
+          if (!['ACCESSORIES', 'BAGS', 'WATCHES', 'SHOES'].includes(prodCat) && !prodDept.includes('ACCESSORIES')) {
             return false;
           }
         }

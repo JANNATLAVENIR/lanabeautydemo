@@ -1,6 +1,47 @@
 import { Category, BrandInfo, CollectionData, EditorialStory, Product } from '../types';
 
-export const LUXURY_CATEGORIES: Category[] = [];
+export const LUXURY_CATEGORIES: Category[] = [
+  {
+    id: 'fragrance',
+    name: 'FRAGRANCE',
+    description: 'Haute Parfumerie & Private Blend Elixirs.',
+    image: 'https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?auto=format&fit=crop&q=80&w=800',
+    department: 'Beauty',
+    subCategories: ['Private Reserve', 'Eau de Parfum', 'Parfum Extract', 'Oud']
+  },
+  {
+    id: 'bags',
+    name: 'BAGS',
+    description: 'Iconic Handcrafted Haute Leather Goods.',
+    image: 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&q=80&w=800',
+    department: 'Fashion',
+    subCategories: ['Top Handle', 'Crossbody', 'Clutch', 'Tote']
+  },
+  {
+    id: 'makeup',
+    name: 'MAKEUP',
+    description: 'Couture Pigments & Radiant Complexion Artistry.',
+    image: 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&q=80&w=800',
+    department: 'Beauty',
+    subCategories: ['Lipstick', 'Complexion', 'Eyes', 'Skincare']
+  },
+  {
+    id: 'fashion',
+    name: 'FASHION',
+    description: 'Parisian Tailoring & Runway Ready-to-Wear.',
+    image: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&q=80&w=800',
+    department: 'Fashion',
+    subCategories: ['Evening Gowns', 'Silks', 'Tailoring', 'Knitwear']
+  },
+  {
+    id: 'jewelry',
+    name: 'JEWELRY',
+    description: 'High Jewelry & Rare Gemstone Creations.',
+    image: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&q=80&w=800',
+    department: 'Accessories',
+    subCategories: ['High Jewelry', 'Fine Watches', 'Diamonds']
+  }
+];
 
 export const BRANDS_DATA: BrandInfo[] = [
   {

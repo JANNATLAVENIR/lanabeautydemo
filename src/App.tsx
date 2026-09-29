@@ -173,6 +173,17 @@ export default function App() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Listen for real-time settings updates from Admin Portal
+  useEffect(() => {
+    const handleSettingsUpdated = (e: any) => {
+      if (e.detail) {
+        setHomepageSettings(e.detail);
+      }
+    };
+    window.addEventListener('lana_settings_updated', handleSettingsUpdated);
+    return () => window.removeEventListener('lana_settings_updated', handleSettingsUpdated);
+  }, []);
+
   // Admin secret shortcut listener (Ctrl + Shift + A or Cmd + Shift + A)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -459,6 +470,52 @@ export default function App() {
               onNavigateView={handleNavigateToView}
               settings={homepageSettings}
             />
+
+            {/* 2. New Arrivals & Latest Creations (Includes Admin Created Products) */}
+            {products && products.length > 0 && (
+              <ProductGridSection
+                title="New Arrivals"
+                subtitle="The latest haute couture, rare extracts & leather goods"
+                categoryTag="Latest Additions"
+                products={newArrivals}
+                wishlistIds={wishlistIds}
+                onToggleWishlist={toggleWishlist}
+                onAddToCart={(p) => handleAddToCart(p, 1)}
+                onViewDetails={(p) => {
+                  setSelectedProduct(p);
+                  setActiveView('pdp');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                onViewAll={() => {
+                  setActiveView('catalog');
+                  setSelectedCategory('ALL');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              />
+            )}
+
+            {/* 3. Curated Masterpieces */}
+            {trendingItems && trendingItems.length > 0 && (
+              <ProductGridSection
+                title="Curated Masterpieces"
+                subtitle="Exclusive seasonal highlights and iconic signatures"
+                categoryTag="Maison Selection"
+                products={trendingItems}
+                wishlistIds={wishlistIds}
+                onToggleWishlist={toggleWishlist}
+                onAddToCart={(p) => handleAddToCart(p, 1)}
+                onViewDetails={(p) => {
+                  setSelectedProduct(p);
+                  setActiveView('pdp');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                onViewAll={() => {
+                  setActiveView('catalog');
+                  setSelectedCategory('ALL');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              />
+            )}
           </div>
         )}
 

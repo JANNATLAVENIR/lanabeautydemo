@@ -49,10 +49,27 @@ export const FashionLanding: React.FC<FashionLandingProps> = ({
   };
 
   const fashionProducts = (productsList || []).filter((p) => {
-    if (!p || !p.category) return false;
-    const cat = p.category.toUpperCase();
-    const isFashionCat = cat === 'BAGS' || cat === 'SHOES' || cat === 'FASHION' || cat === 'ACCESSORIES';
-    if (!isFashionCat) return false;
+    if (!p) return false;
+    const cat = (p.category || '').toUpperCase();
+    const dept = (p.department || '').toUpperCase();
+    const sub = (p.subCategory || '').toUpperCase();
+
+    // Check if explicitly Fashion department or fashion-related category
+    const isFashionDept = dept.includes('FASHION') || dept.includes('COUTURE') || dept.includes('ACCESSORIES') || dept.includes('CLOTHING') || dept.includes('READY');
+    const isFashionCategory = 
+      cat === 'BAGS' || cat.includes('BAG') || 
+      cat === 'SHOES' || cat.includes('SHOE') || cat.includes('SNEAKER') || cat.includes('FOOTWEAR') ||
+      cat === 'FASHION' || cat.includes('COUTURE') || cat.includes('CLOTH') || cat.includes('DRESS') || cat.includes('GOWN') ||
+      cat === 'ACCESSORIES' || cat.includes('ACCESS') || cat.includes('JEWEL') || cat.includes('WATCH') ||
+      cat === 'MEN' || cat === "MEN'S DRESS" || cat === 'SHIRT' || cat === 'JEANS' || cat === 'DENIM';
+
+    // Must not be explicitly pure beauty unless department says fashion
+    const isBeautyExclusive = (dept === 'BEAUTY' || dept === 'FRAGRANCE' || dept === 'SKINCARE') && 
+      (cat === 'FRAGRANCE' || cat === 'SKINCARE' || cat === 'MAKEUP' || cat === 'PERFUME' || cat === 'HAUTE PARFUMERIE');
+
+    if (isBeautyExclusive) return false;
+    if (!isFashionDept && !isFashionCategory) return false;
+
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -66,12 +83,28 @@ export const FashionLanding: React.FC<FashionLandingProps> = ({
   const filteredProducts = selectedSubTab === 'ALL'
     ? fashionProducts
     : selectedSubTab === 'BAGS'
-    ? fashionProducts.filter((p) => (p.category || '').toUpperCase() === 'BAGS')
+    ? fashionProducts.filter((p) => {
+        const c = (p.category || '').toUpperCase();
+        const s = (p.subCategory || '').toUpperCase();
+        return c === 'BAGS' || c.includes('BAG') || s.includes('BAG') || c.includes('LEATHER');
+      })
     : selectedSubTab === 'SHOES'
-    ? fashionProducts.filter((p) => (p.category || '').toUpperCase() === 'SHOES')
+    ? fashionProducts.filter((p) => {
+        const c = (p.category || '').toUpperCase();
+        const s = (p.subCategory || '').toUpperCase();
+        return c === 'SHOES' || c.includes('SHOE') || c.includes('SNEAKER') || c.includes('BOOT') || s.includes('SHOE');
+      })
     : selectedSubTab === 'COUTURE'
-    ? fashionProducts.filter((p) => (p.category || '').toUpperCase() === 'FASHION')
-    : fashionProducts.filter((p) => (p.category || '').toUpperCase() === 'ACCESSORIES');
+    ? fashionProducts.filter((p) => {
+        const c = (p.category || '').toUpperCase();
+        const d = (p.department || '').toUpperCase();
+        return c === 'FASHION' || c.includes('COUTURE') || c.includes('DRESS') || c.includes('CLOTH') || c.includes('READY') || d.includes('COUTURE') || d.includes('FASHION');
+      })
+    : fashionProducts.filter((p) => {
+        const c = (p.category || '').toUpperCase();
+        const d = (p.department || '').toUpperCase();
+        return c === 'ACCESSORIES' || c.includes('ACCESS') || c.includes('JEWEL') || c.includes('WATCH') || d.includes('ACCESSORIES');
+      });
 
   return (
     <div className="min-h-screen bg-white text-neutral-900 font-sans pt-20">

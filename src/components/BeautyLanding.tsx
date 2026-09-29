@@ -53,10 +53,27 @@ export const BeautyLanding: React.FC<BeautyLandingProps> = ({
   const [scentFamily, setScentFamily] = useState<'Oud & Woods' | 'Damask Rose' | 'Solar Citrus' | 'Amber Vanilla'>('Damask Rose');
 
   const beautyProducts = (productsList || []).filter((p) => {
-    if (!p || !p.category) return false;
-    const cat = p.category.toUpperCase();
-    const isBeautyCat = cat === 'FRAGRANCE' || cat === 'SKINCARE' || cat === 'MAKEUP' || cat === 'BODYCARE' || cat === 'DEODORANT';
-    if (!isBeautyCat) return false;
+    if (!p) return false;
+    const cat = (p.category || '').toUpperCase();
+    const dept = (p.department || '').toUpperCase();
+    const sub = (p.subCategory || '').toUpperCase();
+
+    // Check if explicitly Beauty department or beauty-related category
+    const isBeautyDept = dept.includes('BEAUTY') || dept.includes('FRAGRANCE') || dept.includes('SKINCARE') || dept.includes('BODYCARE') || dept.includes('COSMETIC');
+    const isBeautyCategory = 
+      cat === 'FRAGRANCE' || cat.includes('FRAGRANCE') || cat.includes('PERFUME') || cat.includes('PARFUM') || cat.includes('OUD') ||
+      cat === 'SKINCARE' || cat.includes('SKIN') || cat.includes('SERUM') || cat.includes('CREAM') ||
+      cat === 'MAKEUP' || cat.includes('MAKEUP') || cat.includes('COSMETIC') || cat.includes('LIP') || cat.includes('GLOW') ||
+      cat === 'BODYCARE' || cat === 'BODY CARE' || cat.includes('BODY') || cat.includes('DEODORANT') || cat.includes('HAIR') || cat.includes('BATH') ||
+      cat === 'BEAUTY';
+
+    // Must not be explicitly pure apparel unless department says beauty
+    const isFashionExclusive = (dept === 'FASHION' || dept === 'COUTURE') && 
+      (cat === 'BAGS' || cat === 'SHOES' || cat === 'FASHION' || cat === 'DRESS' || cat === 'CLOTHING');
+
+    if (isFashionExclusive) return false;
+    if (!isBeautyDept && !isBeautyCategory) return false;
+
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -70,12 +87,32 @@ export const BeautyLanding: React.FC<BeautyLandingProps> = ({
   const filteredProducts = selectedSubTab === 'ALL'
     ? beautyProducts
     : selectedSubTab === 'FRAGRANCE'
-    ? beautyProducts.filter((p) => (p.category || '').toUpperCase() === 'FRAGRANCE')
+    ? beautyProducts.filter((p) => {
+        const c = (p.category || '').toUpperCase();
+        const s = (p.subCategory || '').toUpperCase();
+        const d = (p.department || '').toUpperCase();
+        return c === 'FRAGRANCE' || c.includes('FRAGRANCE') || c.includes('PERFUME') || c.includes('PARFUM') || c.includes('OUD') || s.includes('PARFUM') || d.includes('FRAGRANCE');
+      })
     : selectedSubTab === 'SKINCARE'
-    ? beautyProducts.filter((p) => (p.category || '').toUpperCase() === 'SKINCARE')
+    ? beautyProducts.filter((p) => {
+        const c = (p.category || '').toUpperCase();
+        const s = (p.subCategory || '').toUpperCase();
+        const d = (p.department || '').toUpperCase();
+        return c === 'SKINCARE' || c.includes('SKIN') || c.includes('SERUM') || c.includes('CREAM') || s.includes('SKIN') || d.includes('SKIN');
+      })
     : selectedSubTab === 'MAKEUP'
-    ? beautyProducts.filter((p) => (p.category || '').toUpperCase() === 'MAKEUP')
-    : beautyProducts.filter((p) => (p.category || '').toUpperCase() === 'BODYCARE' || (p.category || '').toUpperCase() === 'DEODORANT');
+    ? beautyProducts.filter((p) => {
+        const c = (p.category || '').toUpperCase();
+        const s = (p.subCategory || '').toUpperCase();
+        const d = (p.department || '').toUpperCase();
+        return c === 'MAKEUP' || c.includes('MAKEUP') || c.includes('COSMETIC') || c.includes('LIP') || s.includes('LIP') || d.includes('MAKEUP');
+      })
+    : beautyProducts.filter((p) => {
+        const c = (p.category || '').toUpperCase();
+        const s = (p.subCategory || '').toUpperCase();
+        const d = (p.department || '').toUpperCase();
+        return c === 'BODYCARE' || c.includes('BODY') || c.includes('DEODORANT') || c.includes('HAIR') || s.includes('BODY') || d.includes('BODY');
+      });
 
   const recommendedFragrance = (beautyProducts.length > 0)
     ? (scentFamily === 'Damask Rose'
