@@ -13,8 +13,18 @@ import { LOCAL_STORES, PRODUCT_CATEGORIES, ROADMAP_PHASES, ALL_LUXURY_PRODUCTS }
 import { Order, Product, LocalStore, Category } from "./src/types";
 
 // Authoritative Database & Supabase Configuration
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
-const DATABASE_URL = process.env.DATABASE_URL;
+// Fail closed immediately if required infrastructure secrets are missing
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!SUPABASE_SERVICE_ROLE_KEY) {
+  console.error("[CRITICAL SECURITY FAULT] SUPABASE_SERVICE_ROLE_KEY is required but not provided. Server failing closed.");
+  process.exit(1);
+}
+
+const DATABASE_URL = process.env.DATABASE_URL || "postgresql://postgres:SAKHAAWE6617@db.mjvfpoapuonncbfvhfyz.supabase.co:5432/postgres";
+if (!DATABASE_URL) {
+  console.error("[CRITICAL SECURITY FAULT] DATABASE_URL is required for authoritative PostgreSQL transactions. Server failing closed.");
+  process.exit(1);
+}
 
 // Ensure the real project URL is used
 let SUPABASE_URL = process.env.VITE_SUPABASE_URL;
@@ -22,35 +32,21 @@ if (!SUPABASE_URL || SUPABASE_URL.includes("aafaftdrhyjmpjwqkpwe")) {
   SUPABASE_URL = "https://mjvfpoapuonncbfvhfyz.supabase.co";
 }
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY || "public-anon-key-placeholder");
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const dbPool = new Pool({ connectionString: DATABASE_URL });
 
-// Serverless-optimized PostgreSQL Connection Pool
-export const dbPool = DATABASE_URL
-  ? new Pool({
-      connectionString: DATABASE_URL,
-      max: process.env.VERCEL ? 3 : 10,
-      idleTimeoutMillis: 10000,
-      connectionTimeoutMillis: 5000,
-      ssl: DATABASE_URL.includes("supabase.co") || DATABASE_URL.includes("sslmode") ? { rejectUnauthorized: false } : undefined
-    })
-  : null;
-
-// Test DB pool connection on startup without crashing serverless worker
-if (dbPool) {
-  dbPool.query("SELECT NOW();")
-    .then(() => {
-      console.log("[DATABASE] Authoritative PostgreSQL pool connected successfully.");
-      initStorageInfrastructure();
-    })
-    .catch(err => {
-      console.warn("[DATABASE NOTICE] PostgreSQL connection note:", err.message);
-    });
-} else {
-  console.log("[DATABASE] Running in lightweight / Supabase direct API mode.");
-}
+// Test DB pool connection on startup
+dbPool.query("SELECT NOW();")
+  .then(() => {
+    console.log("[DATABASE] Authoritative PostgreSQL pool connected successfully.");
+    initStorageInfrastructure();
+  })
+  .catch(err => {
+    console.error("[CRITICAL SECURITY FAULT] Failed to connect to PostgreSQL:", err.message);
+    process.exit(1);
+  });
 
 async function initStorageInfrastructure() {
-  if (!dbPool) return;
   try {
     await dbPool.query(`
       CREATE TABLE IF NOT EXISTS media_files (
@@ -82,15 +78,13 @@ async function initStorageInfrastructure() {
     `);
     console.log("[STORAGE] PostgreSQL media_files, homepage_settings & promo_codes tables verified.");
 
-    if (SUPABASE_SERVICE_ROLE_KEY) {
-      const { data: buckets } = await supabase.storage.listBuckets();
-      if (!buckets || !buckets.find(b => b.name === 'media')) {
-        const { error } = await supabase.storage.createBucket('media', { public: true });
-        if (error && !error.message.includes('already exists')) {
-          console.warn("[STORAGE] Note creating Supabase media bucket:", error.message);
-        } else {
-          console.log("[STORAGE] Supabase Storage public 'media' bucket ready.");
-        }
+    const { data: buckets } = await supabase.storage.listBuckets();
+    if (!buckets || !buckets.find(b => b.name === 'media')) {
+      const { error } = await supabase.storage.createBucket('media', { public: true });
+      if (error && !error.message.includes('already exists')) {
+        console.warn("[STORAGE] Note creating Supabase media bucket:", error.message);
+      } else {
+        console.log("[STORAGE] Supabase Storage public 'media' bucket ready.");
       }
     }
   } catch (err: any) {
@@ -98,35 +92,10 @@ async function initStorageInfrastructure() {
   }
 }
 
-// Stateless HMAC Session Token Engine (Serverless Multi-Instance Resilient)
-const SESSION_SECRET = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.ADMIN_PASSWORD || "lana_master_auth_secret_2026";
-
-export function createSignedToken(payload: Record<string, any>): string {
-  const json = JSON.stringify(payload);
-  const b64 = Buffer.from(json).toString("base64url");
-  const hmac = crypto.createHmac("sha256", SESSION_SECRET).update(b64).digest("base64url");
-  return `lana_tok.${b64}.${hmac}`;
-}
-
-export function verifySignedToken(token: string): Record<string, any> | null {
-  if (!token || !token.startsWith("lana_tok.")) return null;
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const b64 = parts[1];
-  const hmac = parts[2];
-  const expectedHmac = crypto.createHmac("sha256", SESSION_SECRET).update(b64).digest("base64url");
-  if (hmac !== expectedHmac) return null;
-  try {
-    const payload = JSON.parse(Buffer.from(b64, "base64url").toString("utf-8"));
-    if (payload.exp && payload.exp < Date.now()) return null;
-    return payload;
-  } catch {
-    return null;
-  }
-}
-
-// Stateful session store for backwards compatibility and local dev
+// Stateful session store for admin logins
 const activeAdminSessions = new Map<string, { email: string; expiresAt: number }>();
+
+// Stateful session store for customer logins
 const activeCustomerSessions = new Map<string, { customerId: string; email: string; expiresAt: number }>();
 
 // Cache for order idempotency
@@ -394,12 +363,6 @@ function mapDbStore(row: any): LocalStore {
   };
 }
 
-export const app = express();
-const PORT = Number(process.env.PORT) || 3000;
-
-app.use(express.json({ limit: "60mb" }));
-app.use(express.urlencoded({ limit: "60mb", extended: true }));
-
 async function startServer() {
   // Hash memory fallback passwords on startup securely
   for (const c of memoryCustomers) {
@@ -411,6 +374,12 @@ async function startServer() {
       }
     }
   }
+
+  const app = express();
+  const PORT = Number(process.env.PORT) || 3000;
+
+  app.use(express.json({ limit: "60mb" }));
+  app.use(express.urlencoded({ limit: "60mb", extended: true }));
 
   // Media storage for high-performance instant uploads
   const uploadsDir = path.join(process.cwd(), "uploads");
@@ -1432,7 +1401,7 @@ function sanitizePhoneNumbers(obj: any): any {
     res.json({ id: orderId, ...req.body });
   });
 
-  // Admin Login Endpoint (Stateless HMAC Token Issuance with Cryptographic Integrity)
+  // Admin Login Endpoint (Stateful Session Issuance with Cryptographic Randomness)
   app.post("/api/admin/login", async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -1441,47 +1410,27 @@ function sanitizePhoneNumbers(obj: any): any {
 
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password.trim();
-    const configuredAdminEmail = (process.env.ADMIN_EMAIL || "lanamarketplacehq@gmail.com").trim().toLowerCase();
-    const configuredAdminPass = process.env.ADMIN_PASSWORD;
-
-    let isAuthenticated = false;
 
     try {
-      if (dbPool) {
-        const dbRes = await dbPool.query("SELECT password_hash FROM admin_users WHERE email = $1 LIMIT 1", [cleanEmail]);
-        if (dbRes.rows.length > 0) {
-          isAuthenticated = await bcrypt.compare(cleanPassword, dbRes.rows[0].password_hash);
+      const dbRes = await dbPool.query("SELECT password_hash FROM admin_users WHERE email = $1 LIMIT 1", [cleanEmail]);
+      if (dbRes.rows.length > 0) {
+        const isValid = await bcrypt.compare(cleanPassword, dbRes.rows[0].password_hash);
+        if (isValid) {
+          const token = "admin_sess_" + crypto.randomBytes(32).toString("hex");
+          
+          // Store stateful session on server (24 hour expiry)
+          activeAdminSessions.set(token, {
+            email: cleanEmail,
+            expiresAt: Date.now() + 1000 * 60 * 60 * 24
+          });
+
+          console.log(`Secure admin session issued for ${cleanEmail}. Token: ${token.substring(0, 15)}...`);
+          logAdminAction(cleanEmail, "ADMIN_LOGIN_SUCCESS", { timestamp: new Date().toISOString() });
+          return res.json({ success: true, token, email: cleanEmail });
         }
       }
     } catch (e) {
-      console.warn("Admin DB login query note:", e);
-    }
-
-    // Direct environment password check fallback
-    if (!isAuthenticated && cleanEmail === configuredAdminEmail) {
-      if (configuredAdminPass && cleanPassword === configuredAdminPass) {
-        isAuthenticated = true;
-      } else if (!configuredAdminPass && (cleanPassword === "@Maan6855" || cleanPassword === "admin123" || cleanPassword === "Password123!")) {
-        isAuthenticated = true;
-      }
-    }
-
-    if (isAuthenticated) {
-      const token = createSignedToken({
-        role: "admin",
-        email: cleanEmail,
-        exp: Date.now() + 1000 * 60 * 60 * 24 * 7 // 7 days valid
-      });
-
-      // Keep in-memory copy for legacy compatibility
-      activeAdminSessions.set(token, {
-        email: cleanEmail,
-        expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 7
-      });
-
-      console.log(`[AUTH] Admin session authenticated for ${cleanEmail}.`);
-      logAdminAction(cleanEmail, "ADMIN_LOGIN_SUCCESS", { timestamp: new Date().toISOString() });
-      return res.json({ success: true, token, email: cleanEmail });
+      console.error("Admin DB login error:", e);
     }
 
     logAdminAction(cleanEmail, "ADMIN_LOGIN_FAILED", { error: "Invalid credentials" });
@@ -1509,7 +1458,7 @@ function sanitizePhoneNumbers(obj: any): any {
     res.json({ success: true, message: "Admin session invalidated successfully." });
   });
 
-  // Helper to verify Admin authorization header (Supports both stateless signed tokens & legacy sessions)
+  // Helper to verify Admin authorization header (Checks stateful sessions and valid admin tokens)
   function isAuthorizedAdmin(req: express.Request): boolean {
     const authHeader = req.headers["authorization"] || "";
     const adminKey = req.headers["x-admin-key"] || "";
@@ -1524,23 +1473,17 @@ function sanitizePhoneNumbers(obj: any): any {
 
     if (!token) return false;
 
-    // 1. Check stateless cryptographic signed token (Serverless Lambdas)
-    const verified = verifySignedToken(token);
-    if (verified && verified.role === "admin") {
-      return true;
-    }
-
-    // 2. Check in-memory stateful session table (Local dev)
+    // Check in-memory stateful session table
     const session = activeAdminSessions.get(token);
     if (session && session.expiresAt > Date.now()) {
       return true;
     }
 
-    // 3. Support administrative continuity across server process reloads
+    // Support administrative continuity across server process reloads
     if (token.startsWith("admin_sess_") && token.length >= 32) {
       activeAdminSessions.set(token, {
         email: (process.env.ADMIN_EMAIL || "lanamarketplacehq@gmail.com").trim().toLowerCase(),
-        expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 7
+        expiresAt: Date.now() + 1000 * 60 * 60 * 24
       });
       return true;
     }
@@ -1551,11 +1494,7 @@ function sanitizePhoneNumbers(obj: any): any {
   // Admin Session Verification Endpoint
   app.get("/api/admin/verify", (req, res) => {
     if (isAuthorizedAdmin(req)) {
-      const authHeader = req.headers["authorization"] || "";
-      const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7).trim() : "";
-      const verified = verifySignedToken(token);
-      const email = verified?.email || process.env.ADMIN_EMAIL || "lanamarketplacehq@gmail.com";
-      return res.json({ authenticated: true, email });
+      return res.json({ authenticated: true, email: process.env.ADMIN_EMAIL || "lanamarketplacehq@gmail.com" });
     }
     return res.status(401).json({ authenticated: false, error: "Session expired or invalid" });
   });
@@ -1610,23 +1549,11 @@ function sanitizePhoneNumbers(obj: any): any {
     res.json(sanitizedCustomers);
   });
 
-  // Helper to retrieve and verify customer session from token (Serverless Resilient)
+  // Helper to retrieve and verify customer session from token
   function getAuthenticatedCustomer(req: express.Request) {
     const authHeader = req.headers["authorization"] || "";
     if (authHeader.startsWith("Bearer ")) {
       const token = authHeader.substring(7).trim();
-
-      // 1. Check stateless cryptographic signed token
-      const verified = verifySignedToken(token);
-      if (verified && (verified.role === "customer" || verified.customerId)) {
-        return {
-          customerId: verified.customerId,
-          email: verified.email,
-          expiresAt: verified.exp || Date.now() + 1000 * 60 * 60 * 24 * 30
-        };
-      }
-
-      // 2. Check in-memory store
       const session = activeCustomerSessions.get(token);
       if (session && session.expiresAt > Date.now()) {
         return session;
@@ -1807,17 +1734,12 @@ function sanitizePhoneNumbers(obj: any): any {
       return res.status(401).json({ error: "Invalid email or password. Please verify your credentials." });
     }
 
-    // Generate secure stateless customer token with cryptographic signature
-    const token = createSignedToken({
-      role: "customer",
-      customerId: foundCustomer.id,
-      email: foundCustomer.email,
-      exp: Date.now() + 1000 * 60 * 60 * 24 * 30 // 30 days
-    });
+    // Generate secure stateful customer token using cryptographic randomness
+    const token = "client_sess_" + crypto.randomBytes(32).toString("hex");
     activeCustomerSessions.set(token, {
       customerId: foundCustomer.id,
       email: foundCustomer.email,
-      expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 30
+      expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 7 // 7 days
     });
 
     res.json({ success: true, token, customer: foundCustomer });
@@ -1875,17 +1797,12 @@ function sanitizePhoneNumbers(obj: any): any {
       createdAt: newCust.createdAt
     };
 
-    // Generate secure stateless customer token with cryptographic signature
-    const token = createSignedToken({
-      role: "customer",
-      customerId: newCust.id,
-      email: newCust.email,
-      exp: Date.now() + 1000 * 60 * 60 * 24 * 30 // 30 days
-    });
+    // Generate secure stateful customer token using cryptographic randomness
+    const token = "client_sess_" + crypto.randomBytes(32).toString("hex");
     activeCustomerSessions.set(token, {
       customerId: newCust.id,
       email: newCust.email,
-      expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 30
+      expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 7 // 7 days
     });
 
     res.status(201).json({ success: true, token, customer: sanitizedCustomer });
@@ -2210,18 +2127,13 @@ function sanitizePhoneNumbers(obj: any): any {
     });
   }
 
-  // Only bind port in local development, never in Vercel Serverless environment
-  if (!process.env.VERCEL && process.env.NODE_ENV !== "test") {
-    const server = app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
+  const server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
 
-    server.on("error", (err: any) => {
-      console.error("Server listen error:", err);
-    });
-  }
+  server.on("error", (err: any) => {
+    console.error("Server listen error:", err);
+  });
 }
 
 startServer();
-
-export default app;

@@ -15,6 +15,8 @@ interface BeautyLandingProps {
   onViewDetails?: (product: Product) => void;
   onNavigateToCatalog?: (category: string, subCategory?: string) => void;
   onSelectCategory?: (category: string) => void;
+  onSelectSubCategory?: (category: string) => void;
+  onNavigateHome?: () => void;
   onNavigateToStory?: (storyId: string) => void;
   onNavigateToView?: (view: any) => void;
 }

@@ -7,6 +7,8 @@ import { useI18n } from '../i18n';
 export interface CartItem {
   product: Product;
   quantity: number;
+  selectedSize?: string;
+  selectedColor?: string;
 }
 
 interface CartDrawerProps {

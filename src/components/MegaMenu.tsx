@@ -4,7 +4,7 @@ import { ArrowRight, Sparkles, ChevronRight } from 'lucide-react';
 import { Category } from '../types';
 
 interface MegaMenuProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   activeMenu: string | null;
   onClose: () => void;
   onSelectCategory: (category: string) => void;
@@ -12,7 +12,7 @@ interface MegaMenuProps {
 }
 
 export const MegaMenu: React.FC<MegaMenuProps> = ({
-  isOpen,
+  isOpen = true,
   activeMenu,
   onClose,
   onSelectCategory,

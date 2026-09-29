@@ -16,7 +16,11 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!assets/|.*\\..*).*)$",
+      "source": "/api/(.*)",
+      "destination": "/api/index.ts"
+    },
+    {
+      "source": "/((?!api/|assets/|favicon|.*\\..*).*)$",
       "destination": "/index.html"
     }
   ]
