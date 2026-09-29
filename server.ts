@@ -13,12 +13,12 @@ import { LOCAL_STORES, PRODUCT_CATEGORIES, ROADMAP_PHASES, ALL_LUXURY_PRODUCTS }
 import { Order, Product, LocalStore, Category } from "./src/types";
 
 // Authoritative Database & Supabase Configuration
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
 const DATABASE_URL = process.env.DATABASE_URL;
 
-// Ensure the real project URL is used
-let SUPABASE_URL = process.env.VITE_SUPABASE_URL;
-if (!SUPABASE_URL || SUPABASE_URL.includes("aafaftdrhyjmpjwqkpwe")) {
+// Support standard server-only SUPABASE_URL or legacy VITE_ prefix
+let SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "https://mjvfpoapuonncbfvhfyz.supabase.co";
+if (SUPABASE_URL.includes("aafaftdrhyjmpjwqkpwe")) {
   SUPABASE_URL = "https://mjvfpoapuonncbfvhfyz.supabase.co";
 }
 
@@ -400,19 +400,14 @@ const PORT = Number(process.env.PORT) || 3000;
 app.use(express.json({ limit: "60mb" }));
 app.use(express.urlencoded({ limit: "60mb", extended: true }));
 
-async function startServer() {
-  // Hash memory fallback passwords on startup securely
-  for (const c of memoryCustomers) {
-    if (!c.password.startsWith("$2a$") && !c.password.startsWith("$2b$")) {
-      try {
-        c.password = await bcrypt.hash(c.password, 10);
-      } catch (err) {
-        console.error("Failed to hash initial customer password in memory:", err);
-      }
-    }
+// Hash memory fallback passwords on startup securely
+for (const c of memoryCustomers) {
+  if (!c.password.startsWith("$2a$") && !c.password.startsWith("$2b$")) {
+    bcrypt.hash(c.password, 10).then(h => { c.password = h; }).catch(() => {});
   }
+}
 
-  // Media storage for high-performance instant uploads
+// Media storage for high-performance instant uploads
   const uploadsDir = path.join(process.cwd(), "uploads");
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
@@ -2188,40 +2183,45 @@ function sanitizePhoneNumbers(obj: any): any {
     }
   });
 
-  app.get("/api/health", (req, res) => {
+  // Health check endpoints (Supports both /api/health and /health)
+  app.get(["/api/health", "/health"], (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { 
-        middlewareMode: true,
-        hmr: process.env.DISABLE_HMR === "true" ? false : undefined,
-      },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+  async function startDevServer() {
+    // Vite middleware for development
+    if (process.env.NODE_ENV !== "production") {
+      const vite = await createViteServer({
+        server: { 
+          middlewareMode: true,
+          hmr: process.env.DISABLE_HMR === "true" ? false : undefined,
+        },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } else {
+      const distPath = path.join(process.cwd(), "dist");
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
+
+    // Only bind port in local development, never in Vercel Serverless environment
+    if (!process.env.VERCEL && process.env.NODE_ENV !== "test") {
+      const server = app.listen(PORT, "0.0.0.0", () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+      });
+
+      server.on("error", (err: any) => {
+        console.error("Server listen error:", err);
+      });
+    }
   }
 
-  // Only bind port in local development, never in Vercel Serverless environment
-  if (!process.env.VERCEL && process.env.NODE_ENV !== "test") {
-    const server = app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-
-    server.on("error", (err: any) => {
-      console.error("Server listen error:", err);
-    });
+  // Only start local dev server when NOT running inside Vercel Serverless
+  if (!process.env.VERCEL) {
+    startDevServer();
   }
-}
 
-startServer();
-
-export default app;
+  export default app;
