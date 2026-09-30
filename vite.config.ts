@@ -21,24 +21,8 @@ export default defineConfig(({mode}) => {
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
     build: {
-      chunkSizeWarningLimit: 2000,
-      rollupOptions: {
-        output: {
-          manualChunks(id) {
-            if (id.includes('node_modules')) {
-              if (id.includes('react') || id.includes('react-dom')) {
-                return 'vendor-react';
-              }
-              if (id.includes('lucide-react')) {
-                return 'vendor-icons';
-              }
-              if (id.includes('motion')) {
-                return 'vendor-motion';
-              }
-            }
-          }
-        }
-      }
+      chunkSizeWarningLimit: 3000,
+      target: 'es2020'
     }
   };
 });

@@ -1014,28 +1014,31 @@ function sanitizePhoneNumbers(obj: any): any {
     heroBeautyEyebrow: 'Private Reserve',
     heroBeautyActive: true,
     additionalBanners: [],
-    whatsappNumber: '+966500000000',
+    whatsappNumber: '',
     whatsappGreeting: 'Hello Maison Lana Concierge, I would like assistance with an inquiry.',
-    whatsappFloatingActive: true,
-    whatsappEnabled: true,
+    whatsappFloatingActive: false,
+    whatsappEnabled: false,
     socialLinks: {
-      whatsapp: 'https://wa.me/966500000000',
-      instagram: 'https://instagram.com/maisonlana',
-      tiktok: 'https://tiktok.com/@maisonlana',
-      facebook: 'https://facebook.com/maisonlana',
-      snapchat: 'https://snapchat.com/add/maisonlana'
+      whatsapp: '',
+      instagram: '',
+      tiktok: '',
+      facebook: '',
+      snapchat: '',
+      youtube: '',
+      twitter: '',
+      pinterest: ''
     },
     contactInfo: {
-      storeName: 'Maison Lana Flagship Atelier',
-      whatsappNumber: '+966500000000',
+      storeName: 'Maison Lana Atelier',
+      whatsappNumber: '',
       whatsappGreeting: 'Welcome to Maison Lana Private Client Care.',
-      whatsappFloatingActive: true,
-      whatsappEnabled: true,
-      contactEmail: 'concierge@maisonlana.com',
-      contactPhone: '+966 50 000 0000',
-      address: 'Prince Muhammad Bin Abdulaziz Rd, Al Olaya',
-      city: 'Riyadh, Saudi Arabia',
-      businessHours: 'Sat - Thu: 10:00 AM - 10:00 PM'
+      whatsappFloatingActive: false,
+      whatsappEnabled: false,
+      contactEmail: '',
+      contactPhone: '',
+      address: '',
+      city: '',
+      businessHours: ''
     }
   };
 

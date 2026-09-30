@@ -105,7 +105,8 @@ export const PDPView: React.FC<PDPViewProps> = ({
     } catch {}
 
     if (!targetPhone) {
-      targetPhone = '252619756855';
+      alert('WhatsApp contact number is not configured yet.');
+      return;
     }
 
     window.open(`https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`, '_blank');

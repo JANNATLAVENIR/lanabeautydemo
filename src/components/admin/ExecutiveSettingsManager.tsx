@@ -106,7 +106,7 @@ export function ExecutiveSettingsManager({
         if (parsed.contactInfo?.whatsappNumber) return parsed.contactInfo.whatsappNumber;
       }
     } catch {}
-    return homepageSettings?.whatsappNumber || homepageSettings?.contactInfo?.whatsappNumber || '+252619756855';
+    return homepageSettings?.whatsappNumber || homepageSettings?.contactInfo?.whatsappNumber || '';
   });
 
   useEffect(() => {
@@ -900,13 +900,13 @@ export function ExecutiveSettingsManager({
                           setWhatsappNumber(e.target.value);
                           if (!whatsappEnabled && e.target.value.trim()) setWhatsappEnabled(true);
                         }}
-                        placeholder="e.g. +252619756855"
+                        placeholder="e.g. +25261XXXXXXX"
                         className="w-full pl-10 pr-4 py-3 bg-neutral-50 border border-neutral-200 focus:bg-white focus:border-neutral-900 font-mono text-sm text-neutral-900"
                       />
                       <Phone size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" />
                     </div>
                     <p className="text-[11px] text-neutral-400 mt-1 font-mono">
-                      Geli lambarka oo wata koodhka dalka (tusaale: +252619756855). Haddii aad banaan uga tagto, WhatsApp kama muuqanayo websayts-ka.
+                      Geli lambarka oo wata koodhka dalka (tusaale: +25261XXXXXXX). Haddii aad banaan uga tagto, WhatsApp kama muuqanayo websayts-ka.
                     </p>
                   </div>
 

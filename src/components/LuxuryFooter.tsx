@@ -479,14 +479,14 @@ export const LuxuryFooter: React.FC<LuxuryFooterProps> = ({
 
           {/* Dynamic Social Links from Admin Portal */}
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px] text-neutral-600 font-light">
-            {dynamicSocial?.instagram?.trim() && (
+            {dynamicSocial?.instagram?.trim() && !dynamicSocial.instagram.includes('maisonlana') && (
               <a href={dynamicSocial.instagram.trim()} target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">Instagram</a>
             )}
-            {dynamicSocial?.tiktok?.trim() && (
+            {dynamicSocial?.tiktok?.trim() && !dynamicSocial.tiktok.includes('maisonlana') && (
               <a href={dynamicSocial.tiktok.trim()} target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">TikTok</a>
             )}
             {/* WhatsApp Social Link: ONLY IF ACTIVE */}
-            {isWaActive && waUrl && (
+            {isWaActive && waUrl && !waUrl.includes('966500000000') && (
               <a 
                 href={waUrl} 
                 target="_blank" 
@@ -496,7 +496,7 @@ export const LuxuryFooter: React.FC<LuxuryFooterProps> = ({
                 WhatsApp
               </a>
             )}
-            {dynamicSocial?.snapchat && dynamicSocial.snapchat.trim() !== '' && (
+            {dynamicSocial?.snapchat && dynamicSocial.snapchat.trim() !== '' && !dynamicSocial.snapchat.includes('maisonlana') && (
               <a 
                 href={dynamicSocial.snapchat.trim().startsWith('http') ? dynamicSocial.snapchat.trim() : `https://snapchat.com/add/${dynamicSocial.snapchat.trim().replace(/^@+/, '')}`} 
                 target="_blank" 
@@ -506,13 +506,13 @@ export const LuxuryFooter: React.FC<LuxuryFooterProps> = ({
                 Snapchat
               </a>
             )}
-            {dynamicSocial?.youtube?.trim() && (
+            {dynamicSocial?.youtube?.trim() && !dynamicSocial.youtube.includes('maisonlana') && (
               <a href={dynamicSocial.youtube.trim()} target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">YouTube</a>
             )}
-            {dynamicSocial?.facebook?.trim() && (
+            {dynamicSocial?.facebook?.trim() && !dynamicSocial.facebook.includes('maisonlana') && (
               <a href={dynamicSocial.facebook.trim()} target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">Facebook</a>
             )}
-            {dynamicSocial?.twitter?.trim() && (
+            {dynamicSocial?.twitter?.trim() && !dynamicSocial.twitter.includes('maisonlana') && (
               <a href={dynamicSocial.twitter.trim()} target="_blank" rel="noopener noreferrer" className="hover:text-neutral-900 transition-colors">X / Twitter</a>
             )}
           </div>

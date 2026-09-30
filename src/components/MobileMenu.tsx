@@ -534,13 +534,13 @@ export const MobileMenu: React.FC<MobileMenuProps> = ({
 
             {/* Dynamic Social Links in Mobile Navigation */}
             <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 pt-2 border-t border-neutral-200/60 text-[11px] text-neutral-600 uppercase font-medium">
-              {socialLinks.instagram && (
+              {socialLinks.instagram && !socialLinks.instagram.includes('maisonlana') && (
                 <a href={socialLinks.instagram} target="_blank" rel="noopener noreferrer" className="hover:text-black transition-colors">Instagram</a>
               )}
-              {socialLinks.tiktok && (
+              {socialLinks.tiktok && !socialLinks.tiktok.includes('maisonlana') && (
                 <a href={socialLinks.tiktok} target="_blank" rel="noopener noreferrer" className="hover:text-black transition-colors">TikTok</a>
               )}
-              {socialLinks.snapchat && socialLinks.snapchat.trim() !== '' && (
+              {socialLinks.snapchat && socialLinks.snapchat.trim() !== '' && !socialLinks.snapchat.includes('maisonlana') && (
                 <a 
                   href={socialLinks.snapchat.startsWith('http') ? socialLinks.snapchat : `https://snapchat.com/add/${socialLinks.snapchat.replace(/^@+/, '')}`} 
                   target="_blank" 
@@ -550,10 +550,10 @@ export const MobileMenu: React.FC<MobileMenuProps> = ({
                   Snapchat
                 </a>
               )}
-              {socialLinks.facebook && (
+              {socialLinks.facebook && !socialLinks.facebook.includes('maisonlana') && (
                 <a href={socialLinks.facebook} target="_blank" rel="noopener noreferrer" className="hover:text-black transition-colors">Facebook</a>
               )}
-              {socialLinks.youtube && (
+              {socialLinks.youtube && !socialLinks.youtube.includes('maisonlana') && (
                 <a href={socialLinks.youtube} target="_blank" rel="noopener noreferrer" className="hover:text-black transition-colors">YouTube</a>
               )}
             </div>
