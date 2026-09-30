@@ -219,22 +219,104 @@ class AsyncLock {
 
 const checkoutLock = new AsyncLock();
 
-// Fallback in-memory state if offline
-let memoryStores: LocalStore[] = [...LOCAL_STORES];
-let memoryProducts: Product[] = [...ALL_LUXURY_PRODUCTS];
-let memoryOrders: Order[] = [];
-let memoryCategories: Category[] = [...PRODUCT_CATEGORIES];
+const PRODUCTS_CACHE_FILE = path.join(process.cwd(), 'products-cache.json');
+const CATEGORIES_CACHE_FILE = path.join(process.cwd(), 'categories-cache.json');
 
-// Auto-seed products in database: Purge any old products and synchronize latest catalog
+// Fallback in-memory state initialized with cached or default catalog
+let memoryStores: LocalStore[] = [...LOCAL_STORES];
+let memoryProducts: Product[] = (() => {
+  try {
+    if (fs.existsSync(PRODUCTS_CACHE_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(PRODUCTS_CACHE_FILE, 'utf-8'));
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return [...ALL_LUXURY_PRODUCTS];
+})();
+let memoryOrders: Order[] = [];
+let memoryCategories: Category[] = (() => {
+  try {
+    if (fs.existsSync(CATEGORIES_CACHE_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(CATEGORIES_CACHE_FILE, 'utf-8'));
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return [...PRODUCT_CATEGORIES];
+})();
+
+// Auto-seed catalog: only seeds default items if database is completely empty without deleting user edits
 async function autoSeedProducts() {
   try {
-    console.log("[SEED] Purging all products from database and memory as requested...");
-    await Promise.all([
-      dbPool.query("DELETE FROM public.products;"),
-      supabase.from("products").delete().neq("id", "none_placeholder_safe_delete")
-    ]);
+    let existingCount = 0;
+
+    // Check PostgreSQL
+    if (dbPool) {
+      try {
+        const countRes = await dbPool.query("SELECT COUNT(*) FROM public.products");
+        existingCount = parseInt(countRes.rows[0]?.count || "0", 10);
+      } catch (e) {}
+    }
+
+    // Check Supabase if DB pool was not available or empty
+    if (existingCount === 0) {
+      try {
+        const { count, error } = await supabase.from("products").select("id", { count: "exact", head: true });
+        if (!error && typeof count === "number") {
+          existingCount = count;
+        }
+      } catch (e) {}
+    }
+
+    // If database already has products, do NOT delete them! Fetch and update memory
+    if (existingCount > 0) {
+      console.log(`[SEED] Database contains ${existingCount} products. Preserving existing catalog.`);
+      try {
+        const { data, error } = await supabase.from("products").select("*").order("created_at", { ascending: true });
+        if (!error && Array.isArray(data) && data.length > 0) {
+          memoryProducts = data.map(mapDbProduct);
+          try {
+            fs.writeFileSync(PRODUCTS_CACHE_FILE, JSON.stringify(memoryProducts, null, 2), 'utf-8');
+          } catch {}
+        }
+      } catch (e) {}
+      return;
+    }
+
+    console.log("[SEED] Initializing default catalog into empty database...");
     for (const p of ALL_LUXURY_PRODUCTS) {
-      await poolInsertProduct(p);
+      if (dbPool) {
+        await poolInsertProduct(p);
+      }
+      try {
+        await supabase.from("products").upsert({
+          id: p.id,
+          name: p.name,
+          brand: p.brand || "LANA",
+          category: p.category,
+          sub_category: p.subCategory,
+          department: p.department || "Fashion",
+          gender: p.gender,
+          retail_price: p.retailPrice,
+          original_price: p.originalPrice,
+          image: p.image,
+          secondary_image: p.secondaryImage,
+          images: p.images || [p.image],
+          description: p.description,
+          volume: p.volume,
+          sizes: p.sizes,
+          colors: p.colors,
+          details: p.details,
+          savoir_faire: p.savoirFaire,
+          rating: p.rating || 5.0,
+          review_count: p.reviewCount || 1,
+          is_new: p.isNew ?? true,
+          is_featured: p.isFeatured ?? false,
+          is_bestseller: p.isBestSeller ?? false,
+          is_exclusive: p.isExclusive ?? false,
+          is_active: p.isActive ?? true,
+          supplier_inventory: p.supplierInventory || []
+        });
+      } catch (e) {}
     }
     for (const c of PRODUCT_CATEGORIES) {
       try {
@@ -258,9 +340,6 @@ async function autoSeedProducts() {
         } catch (e) {}
       }
     }
-    memoryProducts = [...ALL_LUXURY_PRODUCTS];
-    memoryCategories = [...PRODUCT_CATEGORIES];
-    console.log(`[SEED] Catalog synchronized: ${ALL_LUXURY_PRODUCTS.length} products, ${PRODUCT_CATEGORIES.length} categories.`);
   } catch (err: any) {
     console.warn("[SEED] Notice during product auto-seed:", err.message);
   }
@@ -486,6 +565,16 @@ function mapDbStore(row: any): LocalStore {
 
 export const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-Idempotency-Key");
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+  next();
+});
 
 app.use(express.json({ limit: "60mb" }));
 app.use(express.urlencoded({ limit: "60mb", extended: true }));
@@ -1234,6 +1323,9 @@ function sanitizePhoneNumbers(obj: any): any {
     }
 
     memoryProducts.unshift(newProduct);
+    try {
+      fs.writeFileSync(PRODUCTS_CACHE_FILE, JSON.stringify(memoryProducts, null, 2), 'utf-8');
+    } catch {}
     res.status(201).json(newProduct);
   });
 
@@ -1310,6 +1402,9 @@ function sanitizePhoneNumbers(obj: any): any {
     }
 
     if (prodIndex !== -1) {
+      try {
+        fs.writeFileSync(PRODUCTS_CACHE_FILE, JSON.stringify(memoryProducts, null, 2), 'utf-8');
+      } catch {}
       return res.json(memoryProducts[prodIndex]);
     }
     res.json({ id: req.params.id, ...req.body });
@@ -1329,6 +1424,9 @@ function sanitizePhoneNumbers(obj: any): any {
     }
 
     memoryProducts = memoryProducts.filter(p => p.id !== req.params.id);
+    try {
+      fs.writeFileSync(PRODUCTS_CACHE_FILE, JSON.stringify(memoryProducts, null, 2), 'utf-8');
+    } catch {}
     res.json({ success: true });
   });
 
@@ -1372,7 +1470,7 @@ function sanitizePhoneNumbers(obj: any): any {
   });
 
   // Orders Engine (Admin Protected Global Ledger)
-  app.get("/api/orders", async (req, res) => {
+  app.get(["/api/orders", "/orders"], async (req, res) => {
     if (!isAuthorizedAdmin(req)) {
       return res.status(403).json({ error: "Access Denied: Admin authorization credentials required to view full order ledger." });
     }
@@ -1388,7 +1486,7 @@ function sanitizePhoneNumbers(obj: any): any {
     res.json(memoryOrders);
   });
 
-  app.get("/api/orders/:id", async (req, res) => {
+  app.get(["/api/orders/:id", "/orders/:id"], async (req, res) => {
     const cleanId = req.params.id.trim().toUpperCase();
 
     // Verify authentication: Anonymous users are strictly forbidden from viewing order details
@@ -1448,7 +1546,7 @@ function sanitizePhoneNumbers(obj: any): any {
   });
 
   // Submit Order via Secure Checkout with Server-side pricing and atomic DB inventory validation
-  app.post("/api/orders", async (req, res) => {
+  app.post(["/api/orders", "/orders"], async (req, res) => {
     // 1. Authoritative Database-backed Idempotency Check
     const rawIdempotencyKey = req.headers["x-idempotency-key"] || req.body.idempotencyKey;
     if (rawIdempotencyKey) {
@@ -1694,7 +1792,7 @@ function sanitizePhoneNumbers(obj: any): any {
   });
 
   // Update order status or assign supplier dark store for order items (Admin Protected with strict state machine)
-  app.put("/api/orders/:id", async (req, res) => {
+  app.put(["/api/orders/:id", "/orders/:id"], async (req, res) => {
     if (!isAuthorizedAdmin(req)) {
       return res.status(403).json({ error: "Access Denied: Admin credentials required." });
     }
@@ -1862,7 +1960,7 @@ function sanitizePhoneNumbers(obj: any): any {
   });
 
   // Admin Login Endpoint (Stateless HMAC Token Issuance with Cryptographic Integrity)
-  app.post("/api/admin/login", async (req, res) => {
+  app.post(["/api/admin/login", "/admin/login"], async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required." });
@@ -1918,7 +2016,7 @@ function sanitizePhoneNumbers(obj: any): any {
   });
 
   // Admin Logout Endpoint
-  app.post("/api/admin/logout", (req, res) => {
+  app.post(["/api/admin/logout", "/admin/logout"], (req, res) => {
     const authHeader = req.headers["authorization"] || "";
     const adminKey = req.headers["x-admin-key"] || "";
     let token = "";
@@ -1978,7 +2076,7 @@ function sanitizePhoneNumbers(obj: any): any {
   }
 
   // Admin Session Verification Endpoint
-  app.get("/api/admin/verify", (req, res) => {
+  app.get(["/api/admin/verify", "/admin/verify"], (req, res) => {
     if (isAuthorizedAdmin(req)) {
       const authHeader = req.headers["authorization"] || "";
       const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7).trim() : "";
@@ -1990,7 +2088,7 @@ function sanitizePhoneNumbers(obj: any): any {
   });
 
   // Admin Protected Customers List (Passwords completely omitted for compliance)
-  app.get("/api/customers", async (req, res) => {
+  app.get(["/api/customers", "/customers"], async (req, res) => {
     if (!isAuthorizedAdmin(req)) {
       return res.status(403).json({ error: "Access Denied: Admin authorization credentials required to view customer vault." });
     }
@@ -2065,7 +2163,7 @@ function sanitizePhoneNumbers(obj: any): any {
   }
 
   // Get current logged-in customer profile
-  app.get("/api/customers/me", async (req, res) => {
+  app.get(["/api/customers/me", "/customers/me"], async (req, res) => {
     const session = getAuthenticatedCustomer(req);
     if (!session) {
       return res.status(401).json({ error: "Access Denied: Unauthenticated client session." });
@@ -2112,7 +2210,7 @@ function sanitizePhoneNumbers(obj: any): any {
   });
 
   // Get order history for authenticated customer only (Isolated Personal Data Access)
-  app.get("/api/customers/me/orders", async (req, res) => {
+  app.get(["/api/customers/me/orders", "/customers/me/orders"], async (req, res) => {
     const session = getAuthenticatedCustomer(req);
     if (!session) {
       return res.status(401).json({ error: "Access Denied: Unauthenticated client session." });
@@ -2154,7 +2252,7 @@ function sanitizePhoneNumbers(obj: any): any {
   });
 
   // Customer Login Endpoint (Isolated Personal Data Access with secure password hash checking)
-  app.post("/api/customers/login", async (req, res) => {
+  app.post(["/api/customers/login", "/customers/login"], async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
@@ -2252,7 +2350,7 @@ function sanitizePhoneNumbers(obj: any): any {
     res.json({ success: true, token, customer: foundCustomer });
   });
 
-  app.post("/api/customers/register", async (req, res) => {
+  app.post(["/api/customers/register", "/customers/register"], async (req, res) => {
     const { name, email, password, phone } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
@@ -2321,7 +2419,7 @@ function sanitizePhoneNumbers(obj: any): any {
   });
 
   // Customer Logout Endpoint
-  app.post("/api/customers/logout", (req, res) => {
+  app.post(["/api/customers/logout", "/customers/logout"], (req, res) => {
     const authHeader = req.headers["authorization"] || "";
     if (authHeader.startsWith("Bearer ")) {
       const token = authHeader.substring(7).trim();
@@ -2334,7 +2432,7 @@ function sanitizePhoneNumbers(obj: any): any {
   const activeResetTokens = new Map<string, { email: string; expiresAt: number }>();
 
   // Enumeration-resistant Forgot Password Endpoint
-  app.post("/api/customers/forgot-password", async (req, res) => {
+  app.post(["/api/customers/forgot-password", "/customers/forgot-password"], async (req, res) => {
     const { email } = req.body;
     if (!email) {
       return res.status(400).json({ error: "Email is required" });
@@ -2370,7 +2468,7 @@ function sanitizePhoneNumbers(obj: any): any {
   });
 
   // Token-validated Reset Password Endpoint (single-use, expires, secure bcrypt hashing)
-  app.post("/api/customers/reset-password", async (req, res) => {
+  app.post(["/api/customers/reset-password", "/customers/reset-password"], async (req, res) => {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) {
       return res.status(400).json({ error: "Token and new password are required" });
@@ -2410,7 +2508,7 @@ function sanitizePhoneNumbers(obj: any): any {
   });
 
   // Product Reviews API
-  app.get("/api/reviews/:productId", async (req, res) => {
+  app.get(["/api/reviews/:productId", "/reviews/:productId"], async (req, res) => {
     const { productId } = req.params;
     try {
       const { data, error } = await supabase.from("reviews").select("*").eq("product_id", productId).order("created_at", { ascending: false });
@@ -2434,7 +2532,7 @@ function sanitizePhoneNumbers(obj: any): any {
     res.json(filtered);
   });
 
-  app.post("/api/reviews", async (req, res) => {
+  app.post(["/api/reviews", "/reviews"], async (req, res) => {
     const { productId, authorName, rating, title, comment } = req.body;
     if (!productId || !comment) {
       return res.status(400).json({ error: "Product ID and comment required" });
@@ -2472,7 +2570,7 @@ function sanitizePhoneNumbers(obj: any): any {
   });
 
   // --- PROMO CODES ENGINE ---
-  app.get("/api/promo-codes", async (req, res) => {
+  app.get(["/api/promo-codes", "/promo-codes"], async (req, res) => {
     try {
       const dbRes = await dbPool.query("SELECT * FROM promo_codes ORDER BY created_at DESC");
       res.json(dbRes.rows);
@@ -2486,7 +2584,7 @@ function sanitizePhoneNumbers(obj: any): any {
     }
   });
 
-  app.post("/api/promo-codes/validate", async (req, res) => {
+  app.post(["/api/promo-codes/validate", "/promo-codes/validate"], async (req, res) => {
     const { code, subtotal } = req.body;
     if (!code || typeof code !== 'string') {
       return res.status(400).json({ valid: false, error: "Please provide a valid promo code." });
@@ -2544,7 +2642,7 @@ function sanitizePhoneNumbers(obj: any): any {
     }
   });
 
-  app.post("/api/promo-codes", async (req, res) => {
+  app.post(["/api/promo-codes", "/promo-codes"], async (req, res) => {
     if (!isAuthorizedAdmin(req)) {
       return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
     }
@@ -2573,7 +2671,7 @@ function sanitizePhoneNumbers(obj: any): any {
     }
   });
 
-  app.delete("/api/promo-codes/:code", async (req, res) => {
+  app.delete(["/api/promo-codes/:code", "/promo-codes/:code"], async (req, res) => {
     if (!isAuthorizedAdmin(req)) {
       return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
     }
@@ -2589,7 +2687,7 @@ function sanitizePhoneNumbers(obj: any): any {
   });
 
   // Live Supabase status verification endpoint
-  app.get("/api/supabase/status", async (req, res) => {
+  app.get(["/api/supabase/status", "/supabase/status"], async (req, res) => {
     try {
       const { count: productCount, error: pError } = await supabase.from("products").select("*", { count: "exact", head: true });
       const { count: orderCount, error: oError } = await supabase.from("orders").select("*", { count: "exact", head: true });

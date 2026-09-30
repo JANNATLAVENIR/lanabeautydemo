@@ -463,59 +463,13 @@ export default function App() {
         {/* VIEW: HOME (MOBILE-FIRST LUXURY EDITORIAL EXPERIENCE) */}
         {activeView === 'home' && (
           <div>
-            {/* 1. Dual Cinematic Campaigns (Fashion & Beauty) */}
+            {/* Dual Cinematic Campaigns & Department Hero Portals */}
             <HeroCampaign
               onNavigateFashion={() => handleNavigateToView('fashion')}
               onNavigateBeauty={() => handleNavigateToView('beauty')}
               onNavigateView={handleNavigateToView}
               settings={homepageSettings}
             />
-
-            {/* 2. New Arrivals & Latest Creations (Includes Admin Created Products) */}
-            {products && products.length > 0 && (
-              <ProductGridSection
-                title="New Arrivals"
-                subtitle="The latest haute couture, rare extracts & leather goods"
-                categoryTag="Latest Additions"
-                products={newArrivals}
-                wishlistIds={wishlistIds}
-                onToggleWishlist={toggleWishlist}
-                onAddToCart={(p) => handleAddToCart(p, 1)}
-                onViewDetails={(p) => {
-                  setSelectedProduct(p);
-                  setActiveView('pdp');
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                onViewAll={() => {
-                  setActiveView('catalog');
-                  setSelectedCategory('ALL');
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-              />
-            )}
-
-            {/* 3. Curated Masterpieces */}
-            {trendingItems && trendingItems.length > 0 && (
-              <ProductGridSection
-                title="Curated Masterpieces"
-                subtitle="Exclusive seasonal highlights and iconic signatures"
-                categoryTag="Maison Selection"
-                products={trendingItems}
-                wishlistIds={wishlistIds}
-                onToggleWishlist={toggleWishlist}
-                onAddToCart={(p) => handleAddToCart(p, 1)}
-                onViewDetails={(p) => {
-                  setSelectedProduct(p);
-                  setActiveView('pdp');
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                onViewAll={() => {
-                  setActiveView('catalog');
-                  setSelectedCategory('ALL');
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-              />
-            )}
           </div>
         )}
 

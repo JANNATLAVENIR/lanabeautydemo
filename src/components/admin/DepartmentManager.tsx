@@ -13,6 +13,9 @@ interface DepartmentManagerProps {
   homepageSettings: any;
   onSaveHomepageSettings: (settings: any) => Promise<void>;
   onRefresh: () => void;
+  onOpenCategoryWizard?: (department?: string) => void;
+  onEditCategoryWizard?: (category: Category) => void;
+  onDeleteCategory?: (categoryId: string, categoryName: string) => Promise<void>;
 }
 
 export interface DepartmentInfo {
@@ -38,7 +41,16 @@ export interface DepartmentInfo {
   crop?: any;
 }
 
-export function DepartmentManager({ categories, products, homepageSettings, onSaveHomepageSettings, onRefresh }: DepartmentManagerProps) {
+export function DepartmentManager({ 
+  categories, 
+  products, 
+  homepageSettings, 
+  onSaveHomepageSettings, 
+  onRefresh,
+  onOpenCategoryWizard,
+  onEditCategoryWizard,
+  onDeleteCategory
+}: DepartmentManagerProps) {
   const [editingDept, setEditingDept] = useState<string | null>(null);
   const [isNewDept, setIsNewDept] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
@@ -1504,6 +1516,102 @@ export function DepartmentManager({ categories, products, homepageSettings, onSa
                       {p}
                     </span>
                   ))}
+                </div>
+
+                {/* NESTED CATEGORIES DIRECTORY FOR THIS DEPARTMENT */}
+                <div className="mt-4 pt-3 border-t border-neutral-100 bg-neutral-50/70 -mx-4 -mb-4 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Folder size={13} className="text-amber-600" />
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-900">
+                        Categories in {dept.name} ({
+                          (categories || []).filter(c => {
+                            const cDept = (c.department || '').toLowerCase();
+                            const dId = dept.id.replace('dept-banner-', '').toLowerCase();
+                            return cDept === dId || (dId === 'fashion' && (cDept === 'couture' || cDept === 'ready-to-wear' || cDept === 'fashion & accessories')) || (dId === 'beauty' && (cDept === 'fragrance' || cDept === 'beauty & fragrance'));
+                          }).length
+                        })
+                      </span>
+                    </div>
+
+                    {onOpenCategoryWizard && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenCategoryWizard(dept.id.replace('dept-banner-', ''))}
+                        className="px-2.5 py-1 bg-neutral-900 text-white hover:bg-amber-600 text-[9.5px] uppercase font-bold tracking-wider transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                      >
+                        <Plus size={11} /> + Add Category
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Categories Grid inside Department */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {(categories || [])
+                      .filter(c => {
+                        const cDept = (c.department || '').toLowerCase();
+                        const dId = dept.id.replace('dept-banner-', '').toLowerCase();
+                        return cDept === dId || (dId === 'fashion' && (cDept === 'couture' || cDept === 'ready-to-wear' || cDept === 'fashion & accessories')) || (dId === 'beauty' && (cDept === 'fragrance' || cDept === 'beauty & fragrance'));
+                      })
+                      .map((cat, catIdx) => {
+                        const catProdCount = (products || []).filter(p => {
+                          const pCat = (p.category || '').toLowerCase();
+                          const cName = (cat.name || '').toLowerCase();
+                          return pCat === cName || pCat === (cat.id || '').toLowerCase();
+                        }).length;
+
+                        return (
+                          <div 
+                            key={cat.id ? `${cat.id}-${catIdx}` : `cat-${catIdx}`}
+                            className="flex items-center justify-between p-2 bg-white border border-neutral-200/80 hover:border-neutral-400 transition-all shadow-2xs gap-2"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              {cat.image ? (
+                                <img 
+                                  src={cat.image} 
+                                  alt={cat.name} 
+                                  className="w-9 h-9 object-cover rounded-xs shrink-0 border border-neutral-200" 
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                <div className="w-9 h-9 bg-neutral-200 rounded-xs flex items-center justify-center text-[10px] text-neutral-500 font-bold shrink-0">
+                                  {cat.name.slice(0, 2).toUpperCase()}
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <h6 className="font-bold text-neutral-900 text-[11px] truncate leading-tight">{cat.name}</h6>
+                                <p className="text-[9px] text-neutral-400 font-mono truncate">
+                                  {catProdCount} items • {cat.subCategories ? cat.subCategories.length : 0} subcats
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              {onEditCategoryWizard && (
+                                <button
+                                  type="button"
+                                  onClick={() => onEditCategoryWizard(cat)}
+                                  className="p-1 text-neutral-500 hover:text-amber-700 hover:bg-neutral-100 rounded-xs transition-colors cursor-pointer"
+                                  title="Edit category"
+                                >
+                                  <Edit3 size={12} />
+                                </button>
+                              )}
+                              {onDeleteCategory && (
+                                <button
+                                  type="button"
+                                  onClick={() => onDeleteCategory(cat.id, cat.name)}
+                                  className="p-1 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-xs transition-colors cursor-pointer"
+                                  title="Delete category"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
                 </div>
               </div>
 
