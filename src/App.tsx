@@ -95,12 +95,12 @@ export default function App() {
   const syncProducts = useCallback(async (retryCount = 0) => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
 
       const ts = Date.now();
       const [prodRes, homeRes, catRes] = await Promise.all([
         fetch(`/api/products?_t=${ts}`, { cache: 'no-store', signal: controller.signal }).catch(() => null),
-        fetch(`/api/homepage-settings?_t=${ts}`, { cache: 'no-store', signal: controller.signal }),
+        fetch(`/api/homepage-settings?_t=${ts}`, { cache: 'no-store', signal: controller.signal }).catch(() => null),
         fetch(`/api/categories?_t=${ts}`, { cache: 'no-store', signal: controller.signal }).catch(() => null)
       ]);
       clearTimeout(timeoutId);
