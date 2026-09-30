@@ -38,34 +38,10 @@ import { LUXURY_CATEGORIES } from './data/luxuryData';
 import { ALL_LUXURY_PRODUCTS, PRODUCT_CATEGORIES } from './constants';
 
 export default function App() {
-  const [categories, setCategories] = useState<Category[]>(() => {
-    try {
-      const cached = localStorage.getItem('lana_categories_cache');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return PRODUCT_CATEGORIES;
-  });
-  const [products, setProducts] = useState<Product[]>(() => {
-    try {
-      const cached = localStorage.getItem('lana_products_cache');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return ALL_LUXURY_PRODUCTS;
-  });
+  const [categories, setCategories] = useState<Category[]>(PRODUCT_CATEGORIES);
+  const [products, setProducts] = useState<Product[]>(ALL_LUXURY_PRODUCTS);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [homepageSettings, setHomepageSettings] = useState<HomepageSettings | undefined>(() => {
-    try {
-      const cached = localStorage.getItem('lana_site_settings_cache');
-      if (cached) return JSON.parse(cached);
-    } catch {}
-    return undefined;
-  });
+  const [homepageSettings, setHomepageSettings] = useState<HomepageSettings | undefined>(undefined);
   const [loading, setLoading] = useState(false);
 
   // Active View Navigation State
@@ -133,9 +109,6 @@ export default function App() {
 
       if (Array.isArray(prodData) && prodData.length > 0) {
         setProducts(prodData);
-        try {
-          localStorage.setItem('lana_products_cache', JSON.stringify(prodData));
-        } catch {}
       } else if (retryCount < 2 && (!prodRes || !prodRes.ok)) {
         // Cold start retry
         setTimeout(() => syncProducts(retryCount + 1), 2500);
@@ -151,7 +124,6 @@ export default function App() {
       if (homeData) {
         setHomepageSettings(homeData);
         try {
-          localStorage.setItem('lana_site_settings_cache', JSON.stringify(homeData));
           window.dispatchEvent(new CustomEvent('lana_settings_updated', { detail: homeData }));
         } catch {}
       }
@@ -165,9 +137,6 @@ export default function App() {
       }
       if (Array.isArray(catData) && catData.length > 0) {
         setCategories(catData);
-        try {
-          localStorage.setItem('lana_categories_cache', JSON.stringify(catData));
-        } catch {}
       }
     } catch (error) {
       console.warn('Live catalog sync note:', error);
