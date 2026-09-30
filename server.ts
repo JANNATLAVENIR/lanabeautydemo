@@ -2,7 +2,6 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
 import os from "os";
@@ -219,15 +218,17 @@ class AsyncLock {
 
 const checkoutLock = new AsyncLock();
 
-const PRODUCTS_CACHE_FILE = path.join(process.cwd(), 'products-cache.json');
-const CATEGORIES_CACHE_FILE = path.join(process.cwd(), 'categories-cache.json');
+const PRODUCTS_CACHE_FILE = path.join(os.tmpdir(), 'products-cache.json');
+const CATEGORIES_CACHE_FILE = path.join(os.tmpdir(), 'categories-cache.json');
 
 // Fallback in-memory state initialized with cached or default catalog
 let memoryStores: LocalStore[] = [...LOCAL_STORES];
 let memoryProducts: Product[] = (() => {
   try {
-    if (fs.existsSync(PRODUCTS_CACHE_FILE)) {
-      const parsed = JSON.parse(fs.readFileSync(PRODUCTS_CACHE_FILE, 'utf-8'));
+    const rootPath = path.join(process.cwd(), 'products-cache.json');
+    const targetPath = fs.existsSync(rootPath) ? rootPath : PRODUCTS_CACHE_FILE;
+    if (fs.existsSync(targetPath)) {
+      const parsed = JSON.parse(fs.readFileSync(targetPath, 'utf-8'));
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
   } catch {}
@@ -236,8 +237,10 @@ let memoryProducts: Product[] = (() => {
 let memoryOrders: Order[] = [];
 let memoryCategories: Category[] = (() => {
   try {
-    if (fs.existsSync(CATEGORIES_CACHE_FILE)) {
-      const parsed = JSON.parse(fs.readFileSync(CATEGORIES_CACHE_FILE, 'utf-8'));
+    const rootPath = path.join(process.cwd(), 'categories-cache.json');
+    const targetPath = fs.existsSync(rootPath) ? rootPath : CATEGORIES_CACHE_FILE;
+    if (fs.existsSync(targetPath)) {
+      const parsed = JSON.parse(fs.readFileSync(targetPath, 'utf-8'));
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
   } catch {}
@@ -414,7 +417,7 @@ async function poolInsertProduct(p: Product) {
 
 autoSeedProducts();
 
-const HOMEPAGE_SETTINGS_FILE = path.join(process.cwd(), 'homepage-settings.json');
+const HOMEPAGE_SETTINGS_FILE = path.join(os.tmpdir(), 'homepage-settings.json');
 let memoryHomepageSettings: any = {
   heroFashionImage: '',
   heroFashionTitle: 'Fashion & Accessories',
@@ -434,8 +437,10 @@ let memoryHomepageSettings: any = {
 };
 
 try {
-  if (fs.existsSync(HOMEPAGE_SETTINGS_FILE)) {
-    memoryHomepageSettings = JSON.parse(fs.readFileSync(HOMEPAGE_SETTINGS_FILE, 'utf-8'));
+  const rootPath = path.join(process.cwd(), 'homepage-settings.json');
+  const targetPath = fs.existsSync(rootPath) ? rootPath : HOMEPAGE_SETTINGS_FILE;
+  if (fs.existsSync(targetPath)) {
+    memoryHomepageSettings = JSON.parse(fs.readFileSync(targetPath, 'utf-8'));
   }
 } catch (e) {
   console.error("Failed to load homepage settings:", e);
@@ -2722,15 +2727,20 @@ function sanitizePhoneNumbers(obj: any): any {
 
   async function startDevServer() {
     // Vite middleware for development
-    if (process.env.NODE_ENV !== "production") {
-      const vite = await createViteServer({
-        server: { 
-          middlewareMode: true,
-          hmr: process.env.DISABLE_HMR === "true" ? false : undefined,
-        },
-        appType: "spa",
-      });
-      app.use(vite.middlewares);
+    if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+      try {
+        const { createServer: createViteServer } = await import("vite");
+        const vite = await createViteServer({
+          server: { 
+            middlewareMode: true,
+            hmr: process.env.DISABLE_HMR === "true" ? false : undefined,
+          },
+          appType: "spa",
+        });
+        app.use(vite.middlewares);
+      } catch (e) {
+        console.warn("Vite dev server init skipped:", e);
+      }
     } else {
       const distPath = path.join(process.cwd(), "dist");
       app.use(express.static(distPath));
