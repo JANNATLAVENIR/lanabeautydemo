@@ -97,10 +97,11 @@ export default function App() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 6000);
 
+      const ts = Date.now();
       const [prodRes, homeRes, catRes] = await Promise.all([
-        fetch('/api/products', { signal: controller.signal }).catch(() => null),
-        fetch('/api/homepage-settings', { signal: controller.signal }).catch(() => null),
-        fetch('/api/categories', { signal: controller.signal }).catch(() => null)
+        fetch(`/api/products?_t=${ts}`, { cache: 'no-store', signal: controller.signal }).catch(() => null),
+        fetch(`/api/homepage-settings?_t=${ts}`, { cache: 'no-store', signal: controller.signal }),
+        fetch(`/api/categories?_t=${ts}`, { cache: 'no-store', signal: controller.signal }).catch(() => null)
       ]);
       clearTimeout(timeoutId);
 

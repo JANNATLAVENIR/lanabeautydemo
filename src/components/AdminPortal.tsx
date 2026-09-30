@@ -422,13 +422,14 @@ export function AdminPortal({ isOpen, onClose, onProductsChanged }: AdminPortalP
         'Authorization': `Bearer ${token}`,
         'x-admin-key': token 
       };
+      const ts = Date.now();
       const [ordRes, prodRes, storeRes, custRes, catRes, homeRes] = await Promise.all([
-        fetch('/api/orders', { headers }),
-        fetch('/api/products', { headers }),
-        fetch('/api/stores', { headers }),
-        fetch('/api/customers', { headers }),
-        fetch('/api/categories', { headers }),
-        fetch('/api/homepage-settings')
+        fetch(`/api/orders?_t=${ts}`, { headers, cache: 'no-store' }),
+        fetch(`/api/products?_t=${ts}`, { headers, cache: 'no-store' }),
+        fetch(`/api/stores?_t=${ts}`, { headers, cache: 'no-store' }),
+        fetch(`/api/customers?_t=${ts}`, { headers, cache: 'no-store' }),
+        fetch(`/api/categories?_t=${ts}`, { headers, cache: 'no-store' }),
+        fetch(`/api/homepage-settings?_t=${ts}`, { cache: 'no-store' })
       ]);
 
       const safeParse = async (r: Response) => {
@@ -1187,12 +1188,20 @@ export function AdminPortal({ isOpen, onClose, onProductsChanged }: AdminPortalP
             Catalog ({products.length})
           </button>
           <button
-            onClick={() => { setActiveTab('departments'); setMobileView('list'); }}
+            onClick={() => { setActiveTab('categories'); setMobileView('list'); }}
             className={`px-3 py-1.5 font-bold tracking-wider uppercase text-[9.5px] transition-all cursor-pointer ${
-              activeTab === 'departments' || activeTab === 'categories' ? 'bg-lana-gold text-white shadow-xs' : 'text-white/65 hover:text-white hover:bg-white/10'
+              activeTab === 'categories' ? 'bg-lana-gold text-white shadow-xs' : 'text-white/65 hover:text-white hover:bg-white/10'
             }`}
           >
-            Departments &amp; Categories
+            Categories ({categories.length})
+          </button>
+          <button
+            onClick={() => { setActiveTab('departments'); setMobileView('list'); }}
+            className={`px-3 py-1.5 font-bold tracking-wider uppercase text-[9.5px] transition-all cursor-pointer ${
+              activeTab === 'departments' ? 'bg-lana-gold text-white shadow-xs' : 'text-white/65 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            Editorial &amp; Depts
           </button>
           <button
             onClick={() => { setActiveTab('media'); setMobileView('list'); }}
@@ -1275,10 +1284,18 @@ export function AdminPortal({ isOpen, onClose, onProductsChanged }: AdminPortalP
           <button
             onClick={() => { setActiveTab('departments'); setMobileView('list'); }}
             className={`px-2.5 py-1 font-bold tracking-wider uppercase text-[8px] transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'departments' || activeTab === 'categories' ? 'bg-white text-lana-ink shadow-xs font-extrabold' : 'text-white/60 hover:text-white border border-white/10'
+              activeTab === 'departments' ? 'bg-white text-lana-ink shadow-xs font-extrabold' : 'text-white/60 hover:text-white border border-white/10'
             }`}
           >
-            Departments &amp; Categories
+            Editorial
+          </button>
+          <button
+            onClick={() => { setActiveTab('categories'); setMobileView('list'); }}
+            className={`px-2.5 py-1 font-bold tracking-wider uppercase text-[8px] transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'categories' ? 'bg-white text-lana-ink shadow-xs font-extrabold' : 'text-white/60 hover:text-white border border-white/10'
+            }`}
+          >
+            Categories ({categories.length})
           </button>
           <button
             onClick={() => { setActiveTab('media'); setMobileView('list'); }}
@@ -1705,8 +1722,8 @@ export function AdminPortal({ isOpen, onClose, onProductsChanged }: AdminPortalP
           </div>
         )}
 
-        {/* Tab 1.2: Departments & Categories */}
-        {(activeTab === 'departments' || activeTab === 'categories') && (
+        {/* Tab 1.2: Departments & Placements */}
+        {activeTab === 'departments' && (
           <div className="h-full bg-white border border-lana-nude/40 p-4 md:p-6 overflow-y-auto">
             <DepartmentManager 
               categories={categories}
@@ -1714,16 +1731,6 @@ export function AdminPortal({ isOpen, onClose, onProductsChanged }: AdminPortalP
               homepageSettings={homepageSettingsObj}
               onSaveHomepageSettings={onSaveSettingsFromDeptManager}
               onRefresh={fetchAdminData}
-              onOpenCategoryWizard={(dept) => {
-                setEditingCategoryWizard(null);
-                if (dept) setNewCatDept(dept as any);
-                setIsCategoryWizardOpen(true);
-              }}
-              onEditCategoryWizard={(cat) => {
-                setEditingCategoryWizard(cat);
-                setIsCategoryWizardOpen(true);
-              }}
-              onDeleteCategory={(catId, catName) => handleDeleteCategory(catId, catName)}
             />
           </div>
         )}
