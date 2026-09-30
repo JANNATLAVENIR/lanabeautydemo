@@ -49,6 +49,25 @@ if (dbPool) {
   console.log("[DATABASE] Running in lightweight / Supabase direct API mode.");
 }
 
+async function withTimeout<T>(fn: () => Promise<T>, timeoutMs: number, fallbackValue: T): Promise<T> {
+  let timer: any;
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallbackValue), timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      fn().then((res) => {
+        clearTimeout(timer);
+        return res;
+      }).catch(() => fallbackValue),
+      timeoutPromise
+    ]);
+  } catch {
+    clearTimeout(timer);
+    return fallbackValue;
+  }
+}
+
 async function initStorageInfrastructure() {
   if (!dbPool) return;
   try {
@@ -415,7 +434,11 @@ async function poolInsertProduct(p: Product) {
   }
 }
 
-autoSeedProducts();
+if (!process.env.VERCEL) {
+  setTimeout(() => {
+    autoSeedProducts().catch(err => console.warn("Background autoSeedNote:", err?.message));
+  }, 100);
+}
 
 const HOMEPAGE_SETTINGS_FILE = path.join(os.tmpdir(), 'homepage-settings.json');
 let memoryHomepageSettings: any = {
@@ -778,22 +801,27 @@ app.post(["/api/upload", "/upload"], async (req, res) => {
 
 // Categories (Database-backed with Supabase & PostgreSQL sync)
 app.get(["/api/categories", "/categories"], async (req, res) => {
-  try {
-    const { data, error } = await supabase.from("categories").select("*").order("name", { ascending: true });
-    if (!error && Array.isArray(data) && data.length > 0) {
-      return res.json(data.map(mapDbCategory));
-    }
-  } catch (e) {
-    console.warn("Supabase categories fetch note:", e);
-  }
-
-  if (dbPool) {
+  const catData = await withTimeout(async () => {
     try {
-      const dbRes = await dbPool.query("SELECT * FROM categories ORDER BY name ASC");
-      if (dbRes.rows.length > 0) {
-        return res.json(dbRes.rows.map(mapDbCategory));
+      const { data, error } = await supabase.from("categories").select("*").order("name", { ascending: true });
+      if (!error && Array.isArray(data) && data.length > 0) {
+        return data.map(mapDbCategory);
       }
     } catch (e) {}
+
+    if (dbPool) {
+      try {
+        const dbRes = await dbPool.query("SELECT * FROM categories ORDER BY name ASC");
+        if (dbRes.rows.length > 0) {
+          return dbRes.rows.map(mapDbCategory);
+        }
+      } catch (e) {}
+    }
+    return null;
+  }, 1200, null);
+
+  if (catData && Array.isArray(catData) && catData.length > 0) {
+    return res.json(catData);
   }
 
   const seen = new Set<string>();
@@ -1013,40 +1041,42 @@ function sanitizePhoneNumbers(obj: any): any {
 
   // Homepage Settings & Hero Banners Control
   app.get(["/api/homepage-settings", "/homepage-settings"], async (req, res) => {
-    // 1. Try Supabase
-    try {
-      const { data, error } = await supabase.from("homepage_settings").select("settings").order("id", { ascending: false }).limit(1).maybeSingle();
-      if (!error && data && data.settings) {
-        const raw = sanitizePhoneNumbers(data.settings);
-        memoryHomepageSettings = {
-          ...DEFAULT_RICH_SETTINGS,
-          ...raw,
-          socialLinks: raw.socialLinks !== undefined ? raw.socialLinks : DEFAULT_RICH_SETTINGS.socialLinks,
-          contactInfo: raw.contactInfo !== undefined ? raw.contactInfo : DEFAULT_RICH_SETTINGS.contactInfo,
-        };
-        return res.json(memoryHomepageSettings);
-      }
-    } catch (e) {
-      console.warn("Supabase homepage-settings fetch note:", e);
-    }
-
-    // 2. Try PostgreSQL dbPool
-    if (dbPool) {
+    const fetchedSettings = await withTimeout(async () => {
+      // 1. Try Supabase
       try {
-        const dbRes = await dbPool.query("SELECT id, settings FROM homepage_settings ORDER BY id DESC LIMIT 1");
-        if (dbRes.rows.length > 0) {
-          const raw = sanitizePhoneNumbers(dbRes.rows[0].settings);
-          memoryHomepageSettings = {
+        const { data, error } = await supabase.from("homepage_settings").select("settings").order("id", { ascending: false }).limit(1).maybeSingle();
+        if (!error && data && data.settings) {
+          const raw = sanitizePhoneNumbers(data.settings);
+          return {
             ...DEFAULT_RICH_SETTINGS,
             ...raw,
             socialLinks: raw.socialLinks !== undefined ? raw.socialLinks : DEFAULT_RICH_SETTINGS.socialLinks,
             contactInfo: raw.contactInfo !== undefined ? raw.contactInfo : DEFAULT_RICH_SETTINGS.contactInfo,
           };
-          return res.json(memoryHomepageSettings);
         }
-      } catch (e) {
-        console.warn("DB fetch failed for homepage-settings:", e);
+      } catch (e) {}
+
+      // 2. Try PostgreSQL dbPool
+      if (dbPool) {
+        try {
+          const dbRes = await dbPool.query("SELECT id, settings FROM homepage_settings ORDER BY id DESC LIMIT 1");
+          if (dbRes.rows.length > 0) {
+            const raw = sanitizePhoneNumbers(dbRes.rows[0].settings);
+            return {
+              ...DEFAULT_RICH_SETTINGS,
+              ...raw,
+              socialLinks: raw.socialLinks !== undefined ? raw.socialLinks : DEFAULT_RICH_SETTINGS.socialLinks,
+              contactInfo: raw.contactInfo !== undefined ? raw.contactInfo : DEFAULT_RICH_SETTINGS.contactInfo,
+            };
+          }
+        } catch (e) {}
       }
+      return null;
+    }, 1200, null);
+
+    if (fetchedSettings) {
+      memoryHomepageSettings = fetchedSettings;
+      return res.json(memoryHomepageSettings);
     }
 
     // 3. Fallback cache with defaults
@@ -1184,24 +1214,29 @@ function sanitizePhoneNumbers(obj: any): any {
 
   // Products (Database-backed with Supabase & PostgreSQL sync)
   app.get(["/api/products", "/products"], async (req, res) => {
-    // 1. Try Supabase
-    try {
-      const { data, error } = await supabase.from("products").select("*").order("created_at", { ascending: true });
-      if (!error && Array.isArray(data) && data.length > 0) {
-        return res.json(data.map(mapDbProduct));
-      }
-    } catch (e) {
-      console.warn("Supabase products fetch failed, using fallback:", e);
-    }
-
-    // 2. Try PostgreSQL dbPool
-    if (dbPool) {
+    const productsData = await withTimeout(async () => {
+      // 1. Try Supabase
       try {
-        const dbRes = await dbPool.query("SELECT * FROM products ORDER BY created_at ASC");
-        if (dbRes.rows.length > 0) {
-          return res.json(dbRes.rows.map(mapDbProduct));
+        const { data, error } = await supabase.from("products").select("*").order("created_at", { ascending: true });
+        if (!error && Array.isArray(data) && data.length > 0) {
+          return data.map(mapDbProduct);
         }
       } catch (e) {}
+
+      // 2. Try PostgreSQL dbPool
+      if (dbPool) {
+        try {
+          const dbRes = await dbPool.query("SELECT * FROM products ORDER BY created_at ASC");
+          if (dbRes.rows.length > 0) {
+            return dbRes.rows.map(mapDbProduct);
+          }
+        } catch (e) {}
+      }
+      return null;
+    }, 1200, null);
+
+    if (productsData && Array.isArray(productsData) && productsData.length > 0) {
+      return res.json(productsData);
     }
 
     // 3. Fallback memory catalog
