@@ -393,17 +393,6 @@ export default function App() {
     return products?.slice(4, 12)?.length > 0 ? products.slice(4, 12) : products;
   }, [products]);
 
-  if (loading) {
-    return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-white font-sans text-neutral-900">
-        <Loader2 className="animate-spin text-neutral-900 mb-3" size={32} />
-        <p className="text-[10px] uppercase tracking-[0.4em] font-bold text-neutral-400">
-          Entering Maison Lana...
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div
       className={`min-h-screen bg-white text-neutral-900 font-sans selection:bg-neutral-900 selection:text-white ${
