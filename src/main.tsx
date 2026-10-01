@@ -4,6 +4,9 @@ import App from './App.tsx';
 import './index.css';
 import { I18nProvider } from './i18n';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { initClientApiMock } from './lib/apiMock';
+
+initClientApiMock();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
