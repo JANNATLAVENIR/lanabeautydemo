@@ -248,3 +248,68 @@ BEGIN
   RETURN v_results;
 END;
 $$;
+
+-- ============================================================
+-- LIVE CATALOG SYNC / SCHEMA HARDENING
+-- Run this section after the original schema on existing projects.
+-- ============================================================
+
+-- Products used by the Admin Portal. ADD COLUMN is safe for existing installations.
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS brand TEXT DEFAULT 'LANA';
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS sub_category TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS department TEXT DEFAULT 'Fashion';
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS gender TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS original_price NUMERIC;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS secondary_image TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS sizes JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS colors JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS details JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS ingredients TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS savoir_faire TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS rating NUMERIC DEFAULT 5.0;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS review_count INTEGER DEFAULT 1;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_new BOOLEAN DEFAULT TRUE;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_bestseller BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_exclusive BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS supplier_inventory JSONB DEFAULT '[]'::jsonb;
+
+CREATE TABLE IF NOT EXISTS public.categories (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  image TEXT,
+  department TEXT DEFAULT 'Fashion',
+  sub_categories JSONB DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public read access to categories" ON public.categories;
+CREATE POLICY "Allow public read access to categories" ON public.categories FOR SELECT USING (true);
+
+CREATE TABLE IF NOT EXISTS public.homepage_settings (
+  id INTEGER PRIMARY KEY,
+  settings JSONB NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE public.homepage_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public read access to homepage settings" ON public.homepage_settings;
+CREATE POLICY "Allow public read access to homepage settings" ON public.homepage_settings FOR SELECT USING (true);
+
+-- Realtime must be enabled for Admin changes to reach already-open browsers.
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.products;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.categories;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.homepage_settings;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;

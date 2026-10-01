@@ -36,6 +36,7 @@ import { Product, Category, Order, ActiveView, BrandInfo, CollectionData, Editor
 import { LUXURY_CATEGORIES } from './data/luxuryData';
 
 import { ALL_LUXURY_PRODUCTS, PRODUCT_CATEGORIES } from './constants';
+import { startCatalogLiveSync } from './lib/liveSync';
 
 export default function App() {
   const [categories, setCategories] = useState<Category[]>(PRODUCT_CATEGORIES);
@@ -107,7 +108,7 @@ export default function App() {
         }
       }
 
-      if (Array.isArray(prodData) && prodData.length > 0) {
+      if (Array.isArray(prodData)) {
         setProducts(prodData);
       } else if (retryCount < 2 && (!prodRes || !prodRes.ok)) {
         // Cold start retry
@@ -135,7 +136,7 @@ export default function App() {
           catData = await catRes.json().catch(() => null);
         }
       }
-      if (Array.isArray(catData) && catData.length > 0) {
+      if (Array.isArray(catData)) {
         setCategories(catData);
       }
     } catch (error) {
@@ -149,7 +150,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    syncProducts();
+    void syncProducts();
+    return startCatalogLiveSync({ refresh: syncProducts });
   }, [syncProducts]);
 
   // Back to top scroll listener
