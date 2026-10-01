@@ -518,6 +518,7 @@ export function AdminPortal({ isOpen, onClose, onProductsChanged }: AdminPortalP
           if (data.heroBeautyActive !== undefined) setHeroBeautyActive(data.heroBeautyActive);
 
           if (Array.isArray(data.additionalBanners)) setAdditionalBanners(data.additionalBanners);
+          window.dispatchEvent(new CustomEvent('lana_data_updated', { detail: data }));
         }
       }
     } catch (err) {

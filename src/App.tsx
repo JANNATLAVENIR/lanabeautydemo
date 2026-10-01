@@ -36,7 +36,6 @@ import { Product, Category, Order, ActiveView, BrandInfo, CollectionData, Editor
 import { LUXURY_CATEGORIES } from './data/luxuryData';
 
 import { ALL_LUXURY_PRODUCTS, PRODUCT_CATEGORIES } from './constants';
-import { startCatalogLiveSync } from './lib/liveSync';
 
 export default function App() {
   const [categories, setCategories] = useState<Category[]>(PRODUCT_CATEGORIES);
@@ -108,7 +107,7 @@ export default function App() {
         }
       }
 
-      if (Array.isArray(prodData)) {
+      if (Array.isArray(prodData) && prodData.length > 0) {
         setProducts(prodData);
       } else if (retryCount < 2 && (!prodRes || !prodRes.ok)) {
         // Cold start retry
@@ -136,7 +135,7 @@ export default function App() {
           catData = await catRes.json().catch(() => null);
         }
       }
-      if (Array.isArray(catData)) {
+      if (Array.isArray(catData) && catData.length > 0) {
         setCategories(catData);
       }
     } catch (error) {
@@ -150,8 +149,24 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    void syncProducts();
-    return startCatalogLiveSync({ refresh: syncProducts });
+    syncProducts();
+  }, [syncProducts]);
+
+  // Real-time polling and event listener for admin portal updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      syncProducts();
+    }, 5000);
+
+    const handleDataUpdated = () => {
+      syncProducts();
+    };
+    window.addEventListener('lana_data_updated', handleDataUpdated);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('lana_data_updated', handleDataUpdated);
+    };
   }, [syncProducts]);
 
   // Back to top scroll listener
