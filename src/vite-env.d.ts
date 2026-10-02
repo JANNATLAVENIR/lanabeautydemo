@@ -19,3 +19,8 @@ declare module '*.webp' {
   const src: string;
   export default src;
 }
+
+declare module '*.cjs' {
+  const runtime: any;
+  export default runtime;
+}
