@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ShoppingBag, Search, Menu, User } from 'lucide-react';
-import { ActiveView } from '../types';
+import { ActiveView, HomepageSettings } from '../types';
 import { MegaMenu } from './MegaMenu';
 import { useI18n } from '../i18n';
 
@@ -17,6 +17,8 @@ export interface LanaHeaderProps {
   onNavigateToView: (view: ActiveView, extra?: any) => void;
   onSelectCategory: (category: string) => void;
   selectedCategory?: string;
+  settings?: HomepageSettings;
+  storeLogo?: string;
 }
 
 export const LanaHeader: React.FC<LanaHeaderProps> = ({
@@ -31,12 +33,16 @@ export const LanaHeader: React.FC<LanaHeaderProps> = ({
   activeView,
   onNavigateToView,
   onSelectCategory,
-  selectedCategory
+  selectedCategory,
+  settings,
+  storeLogo: propLogo
 }) => {
   const { t, isRtl } = useI18n();
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeMegaMenu, setActiveMegaMenu] = useState<string | null>(null);
   const [storeLogo, setStoreLogo] = useState<string>(() => {
+    if (propLogo) return propLogo;
+    if (settings?.storeLogo) return settings.storeLogo;
     try {
       const cached = localStorage.getItem('lana_site_settings_cache');
       return cached ? JSON.parse(cached).storeLogo || '' : '';
@@ -44,6 +50,15 @@ export const LanaHeader: React.FC<LanaHeaderProps> = ({
       return '';
     }
   });
+
+  // Reactive sync with incoming settings & props
+  useEffect(() => {
+    if (propLogo) {
+      setStoreLogo(propLogo);
+    } else if (settings?.storeLogo !== undefined) {
+      setStoreLogo(settings.storeLogo || '');
+    }
+  }, [propLogo, settings?.storeLogo]);
 
   useEffect(() => {
     const handleSettingsUpdated = (e: any) => {

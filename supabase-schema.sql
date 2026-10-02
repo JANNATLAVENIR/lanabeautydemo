@@ -17,7 +17,10 @@ CREATE TABLE IF NOT EXISTS public.stores (
 
 -- Enable RLS
 ALTER TABLE public.stores ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow public read access to stores" ON public.stores FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow public read access to stores" ON public.stores;
+DROP POLICY IF EXISTS "Public can read stores" ON public.stores;
+CREATE POLICY "Public can read stores" ON public.stores FOR SELECT TO anon, authenticated USING (is_active IS NOT FALSE);
+GRANT SELECT ON public.stores TO anon, authenticated;
 -- Admin access is handled securely via backend service role bypass. No public write access is allowed.
 
 -- 2. PRODUCTS TABLE
@@ -36,6 +39,7 @@ CREATE TABLE IF NOT EXISTS public.products (
 
 -- Enable RLS
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public read access to products" ON public.products;
 CREATE POLICY "Allow public read access to products" ON public.products FOR SELECT USING (true);
 -- Admin access is handled securely via backend service role bypass. No public write access is allowed.
 
@@ -65,11 +69,13 @@ CREATE TABLE IF NOT EXISTS public.orders (
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 
 -- Explicit isolation policy: Deny public direct access; allow individual customers to query only their own orders via Supabase Auth if used
+DROP POLICY IF EXISTS "Deny anonymous access to orders" ON public.orders;
 CREATE POLICY "Deny anonymous access to orders" 
   ON public.orders FOR ALL 
   TO anon 
   USING (false);
 
+DROP POLICY IF EXISTS "Customers can only view their own orders" ON public.orders;
 CREATE POLICY "Customers can only view their own orders" 
   ON public.orders FOR SELECT 
   TO authenticated 
@@ -96,11 +102,13 @@ CREATE TABLE IF NOT EXISTS public.customers (
 ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
 
 -- Explicit isolation policy: Deny anonymous access; allow individual customers to view and update only their own profile
+DROP POLICY IF EXISTS "Deny anonymous access to customers" ON public.customers;
 CREATE POLICY "Deny anonymous access to customers" 
   ON public.customers FOR ALL 
   TO anon 
   USING (false);
 
+DROP POLICY IF EXISTS "Customers can only read their own profile" ON public.customers;
 CREATE POLICY "Customers can only read their own profile" 
   ON public.customers FOR SELECT 
   TO authenticated 
@@ -108,6 +116,7 @@ CREATE POLICY "Customers can only read their own profile"
     email = auth.jwt() ->> 'email'
   );
 
+DROP POLICY IF EXISTS "Customers can only update their own profile" ON public.customers;
 CREATE POLICY "Customers can only update their own profile" 
   ON public.customers FOR UPDATE 
   TO authenticated 
@@ -132,6 +141,7 @@ CREATE TABLE IF NOT EXISTS public.reviews (
 
 -- Enable RLS
 ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public read access to reviews" ON public.reviews;
 CREATE POLICY "Allow public read access to reviews" ON public.reviews FOR SELECT USING (true);
 -- Reviews insertions are proxied through our secure backend server API endpoint. No public write is allowed.
 
@@ -192,6 +202,7 @@ CREATE OR REPLACE FUNCTION public.atomic_decrement_inventory(p_items JSONB)
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
 AS $$
 DECLARE
   v_item RECORD;
@@ -202,8 +213,15 @@ DECLARE
   v_inv_record RECORD;
   v_results JSONB := '[]'::jsonb;
 BEGIN
+  IF jsonb_typeof(p_items) IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'Items must be provided as a JSON array.';
+  END IF;
+
   -- p_items is array of: [{"id": "prod-1", "quantity": 1}]
   FOR v_item IN SELECT * FROM jsonb_to_recordset(p_items) AS x(id TEXT, quantity INT) LOOP
+    IF v_item.id IS NULL OR v_item.quantity IS NULL OR v_item.quantity <= 0 THEN
+      RAISE EXCEPTION 'Each item requires a product ID and a positive quantity.';
+    END IF;
     
     -- Acquire Row lock FOR UPDATE to prevent any simultaneous check/writes
     SELECT * INTO v_prod FROM public.products WHERE id = v_item.id FOR UPDATE;
@@ -214,8 +232,8 @@ BEGIN
     v_needed_qty := v_item.quantity;
     v_updated_inventory := '[]'::jsonb;
 
-    FOR v_inv IN SELECT * FROM jsonb_array_elements(v_prod.supplier_inventory) LOOP
-      SELECT * INTO v_inv_record FROM jsonb_to_record(v_inv) AS y("storeId" TEXT, "stock" INT, "wholesaleCost" NUMERIC);
+    FOR v_inv IN SELECT entry.value FROM jsonb_array_elements(COALESCE(v_prod.supplier_inventory, '[]'::jsonb)) AS entry(value) LOOP
+      SELECT * INTO v_inv_record FROM jsonb_to_record(v_inv.value) AS y("storeId" TEXT, "stock" INT, "wholesaleCost" NUMERIC);
       
       IF v_needed_qty > 0 AND v_inv_record.stock > 0 THEN
         IF v_inv_record.stock >= v_needed_qty THEN
@@ -248,3 +266,7 @@ BEGIN
   RETURN v_results;
 END;
 $$;
+
+REVOKE ALL ON FUNCTION public.atomic_decrement_inventory(JSONB) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.atomic_decrement_inventory(JSONB) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.atomic_decrement_inventory(JSONB) TO service_role;

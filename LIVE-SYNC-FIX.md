@@ -1,34 +1,31 @@
-# LANA Market — Live Admin Sync Fix
+# LANA Market — Shared Data Deployment Checklist
 
-## What was fixed
-- Storefront now refreshes products, categories, and homepage settings when another browser changes them.
-- Supabase Realtime is used as the primary live transport.
-- An 8-second polling fallback keeps clients synchronized if Realtime is unavailable.
-- Returning to the browser tab triggers an immediate sync.
-- Empty database results are now respected; deleting all products/categories no longer silently restores stale in-memory/default data.
-- Product and homepage writes no longer report success when the authoritative Supabase write fails.
-- The Supabase schema migration enables Realtime for `products`, `categories`, and `homepage_settings` and adds the catalog columns used by the Admin Portal.
+## Sync behavior
+- Admin changes are sent to the server API and must be saved in shared Supabase/PostgreSQL storage; browser `localStorage` is not the catalog database.
+- The storefront refreshes products, categories, and homepage settings every 5 seconds, and refreshes immediately when a suspended mobile tab becomes visible again.
+- Product edits that do not update a shared database row now return an error instead of appearing successful only in one server instance.
 
-## Required Supabase step
-Open Supabase SQL Editor and run the complete `supabase-schema.sql` from this project. The bottom section is the live-sync/schema-hardening migration and is safe to run on an existing installation.
+## Database setup
+Run SQL against the same Supabase project used by the deployed site.
+- If `public.products` already exists, run `supabase/migrations/20261002000000_shared_catalog_settings.sql` to add the shared catalog/settings schema.
+- For a fresh project, run `supabase-schema.sql` first, then `supabase/migrations/20261002000000_shared_catalog_settings.sql`.
+- Do not run `supabase/migrations/20260401000000_production_hardening.sql` yet. It currently expects product columns created by the later migration and its new reviews schema conflicts with the legacy reviews table in `supabase-schema.sql`.
 
-## Required environment variables
-Server:
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `DATABASE_URL` (optional PostgreSQL fallback)
+The production-hardening migration needs a compatibility fix before it is safe to apply. The shared catalog migration is separate from the base schema.
 
-Frontend:
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
+## Deployment environment
+Set these for the Vercel Production environment, then redeploy:
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for server-side shared writes.
+- `ADMIN_SESSION_SECRET` as a unique, high-entropy server-only secret.
+- `DATABASE_URL` for PostgreSQL-backed checkout and order persistence; it must target the same Supabase project.
+- `ADMIN_PASSWORD` if admin credentials are not provisioned in the database.
+- `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` for the frontend.
 
-Never expose `SUPABASE_SERVICE_ROLE_KEY` in frontend/Vite variables.
+Never put `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, or `ADMIN_SESSION_SECRET` in a `VITE_` variable.
 
-## Test
-1. Open the storefront in Browser A.
-2. Open Admin in Browser B.
-3. Edit a product name/price/image and save.
-4. Browser A should update without a manual refresh (normally within a second or two through Realtime).
-5. If Realtime is unavailable, Browser A will reconcile within 8 seconds.
-6. Delete a product and verify it disappears from Browser A.
-7. Change homepage settings and verify the open storefront updates.
+## Cross-device verification
+1. Open the same deployed URL on two devices.
+2. Save a product edit, add a product, and change homepage/social settings from Admin on device A.
+3. Device B should show the changes within 5 seconds, or immediately after returning to the site if its tab was suspended.
+4. Confirm uploaded media uses a persistent Supabase Storage URL, not a temporary server-instance path.
+5. If any save reports an error, check the Vercel function logs and confirm the migrations and Production environment variables above are applied.

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronRight, Check, Shield, Globe, ChevronDown } from 'lucide-react';
-import { ActiveView, SocialLinksSettings, StoreContactSettings } from '../types';
+import { ActiveView, SocialLinksSettings, StoreContactSettings, HomepageSettings } from '../types';
 import { useI18n, Language } from '../i18n';
 
 export interface LuxuryFooterProps {
@@ -19,6 +19,7 @@ export interface LuxuryFooterProps {
   onSubscribeEmail?: (email: string) => void;
   socialLinks?: SocialLinksSettings;
   contactInfo?: StoreContactSettings;
+  settings?: HomepageSettings;
 }
 
 export const LuxuryFooter: React.FC<LuxuryFooterProps> = ({
@@ -36,26 +37,34 @@ export const LuxuryFooter: React.FC<LuxuryFooterProps> = ({
   onToggleHighContrast,
   onSubscribeEmail,
   socialLinks: initialSocialLinks,
-  contactInfo: initialContactInfo
+  contactInfo: initialContactInfo,
+  settings
 }) => {
   const { language, setLanguage, t } = useI18n();
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
   const langDropdownRef = useRef<HTMLDivElement>(null);
-  const [dynamicSocial, setDynamicSocial] = useState<SocialLinksSettings | undefined>(initialSocialLinks);
-  const [dynamicContact, setDynamicContact] = useState<StoreContactSettings | undefined>(initialContactInfo);
+  const [dynamicSocial, setDynamicSocial] = useState<SocialLinksSettings | undefined>(
+    settings?.socialLinks || initialSocialLinks
+  );
+  const [dynamicContact, setDynamicContact] = useState<StoreContactSettings | undefined>(
+    settings?.contactInfo || initialContactInfo
+  );
 
   useEffect(() => {
-    if (initialSocialLinks) setDynamicSocial(initialSocialLinks);
-    if (initialContactInfo) setDynamicContact(initialContactInfo);
-  }, [initialSocialLinks, initialContactInfo]);
+    if (settings?.socialLinks) setDynamicSocial(settings.socialLinks);
+    else if (initialSocialLinks) setDynamicSocial(initialSocialLinks);
+
+    if (settings?.contactInfo) setDynamicContact(settings.contactInfo);
+    else if (initialContactInfo) setDynamicContact(initialContactInfo);
+  }, [settings, initialSocialLinks, initialContactInfo]);
 
   useEffect(() => {
-    // Load initial from cache if not provided
+    // Load initial from cache only if not provided by settings or props
     try {
       const cached = localStorage.getItem('lana_site_settings_cache');
-      if (cached) {
+      if (cached && !settings) {
         const parsed = JSON.parse(cached);
         if (parsed.socialLinks && !dynamicSocial) setDynamicSocial(parsed.socialLinks);
         if (parsed.contactInfo && !dynamicContact) setDynamicContact(parsed.contactInfo);
@@ -70,7 +79,7 @@ export const LuxuryFooter: React.FC<LuxuryFooterProps> = ({
 
     window.addEventListener('lana_settings_updated', handleSettingsUpdated);
     return () => window.removeEventListener('lana_settings_updated', handleSettingsUpdated);
-  }, []);
+  }, [settings]);
 
   const isWaActive = (() => {
     if (dynamicContact?.whatsappEnabled === false) return false;

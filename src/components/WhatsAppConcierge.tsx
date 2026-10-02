@@ -1,55 +1,83 @@
 import React, { useState, useEffect } from 'react';
 import { MessageCircle, X, ShieldCheck, Sparkles, Send, Clock, ShoppingBag } from 'lucide-react';
-import { Product } from '../types';
+import { Product, HomepageSettings } from '../types';
 import { useI18n } from '../i18n';
 
 interface WhatsAppConciergeProps {
   currentProduct?: Product | null;
   phoneNumber?: string;
   storeName?: string;
+  settings?: HomepageSettings;
 }
 
 export const WhatsAppConcierge: React.FC<WhatsAppConciergeProps> = ({
   currentProduct,
   phoneNumber: propPhone,
-  storeName: propStoreName
+  storeName: propStoreName,
+  settings
 }) => {
   const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState<'product' | 'order' | 'general' | 'vip'>('general');
   const [customNote, setCustomNote] = useState('');
   
-  const [activePhone, setActivePhone] = useState(propPhone || '');
-  const [activeStoreName, setActiveStoreName] = useState(propStoreName || 'Maison LANA');
-  const [activeGreeting, setActiveGreeting] = useState('');
-  const [isVisible, setIsVisible] = useState(true);
+  const [activePhone, setActivePhone] = useState(propPhone || settings?.whatsappNumber || settings?.contactInfo?.whatsappNumber || '');
+  const [activeStoreName, setActiveStoreName] = useState(propStoreName || settings?.contactInfo?.storeName || 'Maison LANA');
+  const [activeGreeting, setActiveGreeting] = useState(settings?.whatsappGreeting || '');
+  const [isVisible, setIsVisible] = useState(settings?.whatsappFloatingActive !== false);
 
+  // Authoritative sync from parent props and settings
+  useEffect(() => {
+    if (propPhone) {
+      setActivePhone(propPhone);
+    }
+  }, [propPhone]);
+
+  useEffect(() => {
+    if (propStoreName) {
+      setActiveStoreName(propStoreName);
+    }
+  }, [propStoreName]);
+
+  useEffect(() => {
+    if (settings) {
+      const phone = settings.whatsappNumber || settings.contactInfo?.whatsappNumber || settings.contactInfo?.contactPhone;
+      if (phone) setActivePhone(phone);
+      if (settings.contactInfo?.storeName) setActiveStoreName(settings.contactInfo.storeName);
+      if (settings.whatsappGreeting) setActiveGreeting(settings.whatsappGreeting);
+      if (settings.whatsappFloatingActive !== undefined) setIsVisible(settings.whatsappFloatingActive);
+      if (settings.whatsappEnabled === false) setIsVisible(false);
+    }
+  }, [settings]);
+
+  // Fallback initial load from cache & same-window event listener
   useEffect(() => {
     try {
       const cached = localStorage.getItem('lana_site_settings_cache');
-      if (cached) {
+      if (cached && !propPhone && !settings) {
         const parsed = JSON.parse(cached);
-        if (parsed.whatsappNumber && !propPhone) setActivePhone(parsed.whatsappNumber);
+        if (parsed.whatsappNumber) setActivePhone(parsed.whatsappNumber);
         if (parsed.whatsappGreeting) setActiveGreeting(parsed.whatsappGreeting);
         if (parsed.whatsappFloatingActive !== undefined) setIsVisible(parsed.whatsappFloatingActive);
-        if (parsed.contactInfo?.storeName && !propStoreName) setActiveStoreName(parsed.contactInfo.storeName);
-        else if (parsed.contactInfo?.whatsappNumber && !propPhone) setActivePhone(parsed.contactInfo.whatsappNumber);
+        if (parsed.contactInfo?.storeName) setActiveStoreName(parsed.contactInfo.storeName);
+        else if (parsed.contactInfo?.whatsappNumber) setActivePhone(parsed.contactInfo.whatsappNumber);
       }
     } catch {}
 
     const handleSettingsUpdated = (e: any) => {
       const detail = e.detail;
-      if (detail?.whatsappNumber && !propPhone) setActivePhone(detail.whatsappNumber);
+      if (detail?.whatsappNumber) setActivePhone(detail.whatsappNumber);
       if (detail?.whatsappGreeting) setActiveGreeting(detail.whatsappGreeting);
       if (detail?.whatsappFloatingActive !== undefined) setIsVisible(detail.whatsappFloatingActive);
-      if (detail?.contactInfo?.storeName && !propStoreName) setActiveStoreName(detail.contactInfo.storeName);
+      if (detail?.contactInfo?.storeName) setActiveStoreName(detail.contactInfo.storeName);
     };
 
     window.addEventListener('lana_settings_updated', handleSettingsUpdated);
     return () => window.removeEventListener('lana_settings_updated', handleSettingsUpdated);
-  }, [propPhone, propStoreName]);
+  }, [propPhone, propStoreName, settings]);
 
-  const cleanPhone = (activePhone || '').replace(/[^0-9]/g, '');
+  const rawPhone = propPhone || settings?.whatsappNumber || settings?.contactInfo?.whatsappNumber || activePhone || '';
+  const cleanPhone = String(rawPhone).replace(/[^0-9]/g, '');
 
   if (!isVisible || !cleanPhone) return null;
 

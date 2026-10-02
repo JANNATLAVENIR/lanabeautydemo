@@ -174,9 +174,10 @@ async function initStorageInfrastructure() {
 }
 
 // Stateless HMAC Session Token Engine (Serverless Multi-Instance Resilient)
-const SESSION_SECRET = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.ADMIN_PASSWORD || "lana_master_auth_secret_2026";
+const SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 export function createSignedToken(payload: Record<string, any>): string {
+  if (!SESSION_SECRET) throw new Error("ADMIN_SESSION_SECRET or SUPABASE_SERVICE_ROLE_KEY must be configured.");
   const json = JSON.stringify(payload);
   const b64 = Buffer.from(json).toString("base64url");
   const hmac = crypto.createHmac("sha256", SESSION_SECRET).update(b64).digest("base64url");
@@ -184,7 +185,7 @@ export function createSignedToken(payload: Record<string, any>): string {
 }
 
 export function verifySignedToken(token: string): Record<string, any> | null {
-  if (!token || !token.startsWith("lana_tok.")) return null;
+  if (!SESSION_SECRET || !token || !token.startsWith("lana_tok.")) return null;
   const parts = token.split(".");
   if (parts.length !== 3) return null;
   const b64 = parts[1];
@@ -568,6 +569,112 @@ function mapDbOrder(row: any): Order {
   };
 }
 
+// Canonical Public Product Mapper (Strictly hides wholesaleCost and supplier inventory metadata)
+function mapPublicProduct(row: any) {
+  return {
+    id: row.id,
+    name: row.name || "",
+    brand: row.brand || "LANA",
+    category: row.category || "Fragrance",
+    subCategory: row.sub_category || row.subcategory,
+    department: row.department || "Beauty",
+    gender: row.gender,
+    retailPrice: Number(row.retail_price) || 0,
+    originalPrice: row.original_price ? Number(row.original_price) : undefined,
+    image: row.image || "",
+    secondaryImage: row.secondary_image,
+    images: row.images || (row.image ? [row.image] : []),
+    description: row.description || "",
+    volume: row.volume || "",
+    sizes: row.sizes,
+    colors: row.colors,
+    details: row.details,
+    savoirFaire: row.savoir_faire,
+    rating: row.rating !== undefined ? Number(row.rating) : 5.0,
+    reviewCount: row.review_count !== undefined ? Number(row.review_count) : 12,
+    isNew: row.is_new !== undefined ? Boolean(row.is_new) : undefined,
+    isFeatured: row.is_featured !== undefined ? Boolean(row.is_featured) : undefined,
+    isBestSeller: row.is_bestseller !== undefined ? Boolean(row.is_bestseller) : undefined,
+    isExclusive: row.is_exclusive !== undefined ? Boolean(row.is_exclusive) : undefined,
+    isActive: row.is_active !== false,
+    inStock: row.in_stock !== undefined ? Boolean(row.in_stock) : true
+  };
+}
+
+// Canonical Order Mapper for orders_v2 + order_items
+function mapCanonicalOrder(row: any): Order {
+  const addr = typeof row.shipping_address_snapshot === "object" && row.shipping_address_snapshot !== null
+    ? row.shipping_address_snapshot
+    : {};
+  return {
+    id: row.order_number || row.id,
+    customerName: row.customer_name || addr.fullName || "Distinguished Client",
+    customerEmail: row.customer_email || addr.email || "",
+    customerPhone: row.customer_phone || addr.phone || "",
+    deliveryAddress: addr.address || "Standard Delivery",
+    city: addr.city || "Paris",
+    postalCode: addr.postalCode || "",
+    paymentMethod: row.payment_method || "Manual Payment",
+    giftWrapping: false,
+    notes: row.customer_notes || "",
+    items: Array.isArray(row.items) ? row.items.map((it: any) => ({
+      productId: it.productId,
+      productName: it.productName,
+      price: Number(it.unitPrice) || 0,
+      quantity: Number(it.quantity) || 1,
+      image: ""
+    })) : [],
+    subtotal: Number(row.subtotal) || 0,
+    shippingFee: Number(row.shipping) || 0,
+    totalPrice: Number(row.total) || 0,
+    status: row.order_status || "Pending",
+    paymentStatus: row.payment_status || "Pending",
+    createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+    assignedStoreIds: {}
+  };
+}
+
+// Helper to ensure customer exists in customers_v2 linked to auth.users
+async function ensureCustomerV2(email: string, name?: string, phone?: string): Promise<string | null> {
+  if (!dbPool) return null;
+  const cleanEmail = email.trim().toLowerCase();
+  try {
+    const existing = await dbPool.query("SELECT id FROM public.customers_v2 WHERE email = $1 LIMIT 1;", [cleanEmail]);
+    if (existing.rows.length > 0) return existing.rows[0].id;
+
+    let authUserId: string | null = null;
+    const authUser = await dbPool.query("SELECT id FROM auth.users WHERE email = $1 LIMIT 1;", [cleanEmail]);
+    if (authUser.rows.length > 0) {
+      authUserId = authUser.rows[0].id;
+    } else {
+      const tempPass = `Tmp_${crypto.randomBytes(16).toString("hex")}!`;
+      const { data } = await supabase.auth.admin.createUser({
+        email: cleanEmail,
+        password: tempPass,
+        email_confirm: true,
+        user_metadata: { full_name: name || cleanEmail.split("@")[0] }
+      });
+      if (data?.user?.id) {
+        authUserId = data.user.id;
+      }
+    }
+
+    if (authUserId) {
+      const insertRes = await dbPool.query(
+        `INSERT INTO public.customers_v2 (user_id, full_name, email, phone)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (user_id) DO UPDATE SET full_name = EXCLUDED.full_name, phone = COALESCE(EXCLUDED.phone, customers_v2.phone)
+         RETURNING id;`,
+        [authUserId, name || cleanEmail.split("@")[0], cleanEmail, phone || null]
+      );
+      return insertRes.rows[0]?.id || null;
+    }
+  } catch (err: any) {
+    console.error("[ensureCustomerV2 Notice]", err.message);
+  }
+  return null;
+}
+
 function mapDbCategory(row: any): Category {
   return {
     id: row.id,
@@ -655,6 +762,7 @@ async function persistMediaFile(buffer: Buffer, filename: string, mimeType: stri
   }
 
   // 3. Persist to PostgreSQL media_files table as durable permanent backup
+  let savedToPostgres = false;
   if (dbPool) {
     try {
       await dbPool.query(
@@ -663,16 +771,19 @@ async function persistMediaFile(buffer: Buffer, filename: string, mimeType: stri
          ON CONFLICT (filename) DO UPDATE SET mime_type = $2, data_base64 = $3`,
         [filename, mimeType, buffer.toString('base64')]
       );
+      savedToPostgres = true;
     } catch (err: any) {
       console.warn("PostgreSQL media_files save note:", err.message);
     }
   }
 
-  // 4. Return serverless-safe media endpoint or data url fallback
   if (buffer.length < 500000) {
-    // If under 500KB and storage is offline, data url ensures image never 404s
     return `data:${mimeType};base64,${buffer.toString('base64')}`;
   }
+  if (!savedToPostgres) {
+    throw new Error("Media could not be saved to persistent storage. Configure Supabase Storage or DATABASE_URL and try again.");
+  }
+
   return `/api/media/${filename}`;
 }
 
@@ -1042,12 +1153,16 @@ function sanitizePhoneNumbers(obj: any): any {
     }
   };
 
-  // Homepage Settings & Hero Banners Control
+  // Homepage Settings & Hero Banners Control (Authoritative Singleton id=1)
   app.get(["/api/homepage-settings", "/homepage-settings"], async (req, res) => {
     const fetchedSettings = await withTimeout(async () => {
-      // 1. Try Supabase
+      // 1. Try Supabase for singleton id=1
       try {
-        const { data, error } = await supabase.from("homepage_settings").select("settings").order("id", { ascending: false }).limit(1).maybeSingle();
+        const { data, error } = await supabase
+          .from("homepage_settings")
+          .select("settings")
+          .eq("id", 1)
+          .maybeSingle();
         if (!error && data && data.settings) {
           const raw = sanitizePhoneNumbers(data.settings);
           return {
@@ -1059,10 +1174,10 @@ function sanitizePhoneNumbers(obj: any): any {
         }
       } catch (e) {}
 
-      // 2. Try PostgreSQL dbPool
+      // 2. Try PostgreSQL dbPool for singleton id=1
       if (dbPool) {
         try {
-          const dbRes = await dbPool.query("SELECT id, settings FROM homepage_settings ORDER BY id DESC LIMIT 1");
+          const dbRes = await dbPool.query("SELECT id, settings FROM public.homepage_settings WHERE id = 1 LIMIT 1;");
           if (dbRes.rows.length > 0) {
             const raw = sanitizePhoneNumbers(dbRes.rows[0].settings);
             return {
@@ -1075,7 +1190,7 @@ function sanitizePhoneNumbers(obj: any): any {
         } catch (e) {}
       }
       return null;
-    }, 1200, null);
+    }, 3000, null);
 
     if (fetchedSettings) {
       memoryHomepageSettings = fetchedSettings;
@@ -1106,31 +1221,38 @@ function sanitizePhoneNumbers(obj: any): any {
       };
 
       const updatedSettings = await sanitizeHomepageSettingsAsync(merged);
-      memoryHomepageSettings = updatedSettings;
 
-      // Persist to local cache file
+      // Require durable storage before updating the serverless instance cache.
+      const { error: supabaseError } = await supabase.from("homepage_settings").upsert(
+        { id: 1, settings: updatedSettings },
+        { onConflict: "id" }
+      );
+      if (supabaseError) throw new Error(`Supabase save failed: ${supabaseError.message}`);
+
+      if (dbPool) {
+        await dbPool.query(
+          `INSERT INTO public.homepage_settings (id, settings)
+           VALUES (1, $1)
+           ON CONFLICT (id)
+           DO UPDATE SET settings = EXCLUDED.settings;`,
+          [JSON.stringify(updatedSettings)]
+        );
+      }
+
+      memoryHomepageSettings = updatedSettings;
       try {
         fs.writeFileSync(HOMEPAGE_SETTINGS_FILE, JSON.stringify(updatedSettings, null, 2), 'utf-8');
       } catch (fsErr) {}
 
-      // 1. Persist to Supabase
+      // 3. Broadcast settings update across Supabase Realtime channel
       try {
-        await supabase.from("homepage_settings").upsert({
-          id: 1,
-          settings: updatedSettings
+        const syncChannel = supabase.channel('public_catalog_sync');
+        await syncChannel.send({
+          type: 'broadcast',
+          event: 'settings_changed',
+          payload: { type: 'SETTINGS_CHANGED', timestamp: Date.now() }
         });
-      } catch (err: any) {
-        console.warn("Supabase homepage-settings save note:", err.message);
-      }
-
-      // 2. Persist to PostgreSQL
-      if (dbPool) {
-        try {
-          await dbPool.query("INSERT INTO homepage_settings (settings) VALUES ($1)", [JSON.stringify(updatedSettings)]);
-        } catch (dbErr: any) {
-          console.warn("PostgreSQL homepage-settings save note:", dbErr.message);
-        }
-      }
+      } catch (bcErr) {}
 
       res.json(updatedSettings);
     } catch (e: any) {
@@ -1215,35 +1337,31 @@ function sanitizePhoneNumbers(obj: any): any {
     res.json({ id: req.params.id, ...req.body });
   });
 
-  // Products (Database-backed with Supabase & PostgreSQL sync)
+  // Products (Public catalog using products_public view to strictly prevent wholesale/supplier data exposure)
   app.get(["/api/products", "/products"], async (req, res) => {
-    const productsData = await withTimeout(async () => {
-      // 1. Try Supabase
-      try {
-        const { data, error } = await supabase.from("products").select("*").order("created_at", { ascending: true });
-        if (!error && Array.isArray(data) && data.length > 0) {
-          return data.map(mapDbProduct);
-        }
-      } catch (e) {}
-
-      // 2. Try PostgreSQL dbPool
+    try {
+      // 1. Query products_public view directly via PostgreSQL connection pool
       if (dbPool) {
-        try {
-          const dbRes = await dbPool.query("SELECT * FROM products ORDER BY created_at ASC");
-          if (dbRes.rows.length > 0) {
-            return dbRes.rows.map(mapDbProduct);
-          }
-        } catch (e) {}
+        const dbRes = await dbPool.query("SELECT * FROM public.products_public WHERE is_active IS NOT FALSE ORDER BY created_at ASC;");
+        if (dbRes.rows.length > 0) {
+          return res.json(dbRes.rows.map(mapPublicProduct));
+        }
       }
-      return null;
-    }, 1200, null);
 
-    if (productsData && Array.isArray(productsData) && productsData.length > 0) {
-      return res.json(productsData);
+      // 2. Query products_public via Supabase client
+      const { data, error } = await supabase.from("products_public").select("*").order("created_at", { ascending: true });
+      if (!error && Array.isArray(data) && data.length > 0) {
+        return res.json(data.map(mapPublicProduct));
+      }
+    } catch (e: any) {
+      console.warn("[PUBLIC CATALOG FETCH WARNING]", e.message);
     }
 
-    // 3. Fallback memory catalog
-    res.json(memoryProducts);
+    // 3. Sanitized fallback memory catalog (strip wholesaleCost and supplier inventory details)
+    res.json(memoryProducts.map(p => {
+      const { supplierInventory, ...safeProduct } = p;
+      return { ...safeProduct, inStock: true };
+    }));
   });
 
   app.post(["/api/products", "/products"], async (req, res) => {
@@ -1283,9 +1401,10 @@ function sanitizePhoneNumbers(obj: any): any {
       supplierInventory: Array.isArray(req.body.supplierInventory) ? req.body.supplierInventory : []
     };
 
-    // 1. Persist to Supabase
     try {
-      const { error } = await supabase.from("products").upsert({
+      let supabaseProductError: any = null;
+      try {
+        const { error } = await supabase.from("products").upsert({
         id: newProduct.id,
         name: newProduct.name,
         brand: newProduct.brand,
@@ -1312,17 +1431,17 @@ function sanitizePhoneNumbers(obj: any): any {
         is_bestseller: newProduct.isBestSeller,
         is_exclusive: newProduct.isExclusive,
         is_active: newProduct.isActive,
-        supplier_inventory: newProduct.supplierInventory
-      });
-      if (error) console.error("Supabase product insert error:", error);
-    } catch (e: any) {
-      console.warn("Supabase product insert fallback:", e.message);
-    }
+          supplier_inventory: newProduct.supplierInventory
+        });
+        supabaseProductError = error;
+      } catch (error: any) {
+        supabaseProductError = error;
+      }
 
-    // 2. Persist to PostgreSQL pool
-    if (dbPool) {
-      try {
-        await dbPool.query(
+      let postgresProductError: any = null;
+      if (dbPool) {
+        try {
+          await dbPool.query(
           `INSERT INTO products (
             id, name, brand, category, sub_category, department, gender, retail_price, original_price,
             image, secondary_image, images, description, volume, sizes, colors, details, ingredients,
@@ -1366,17 +1485,23 @@ function sanitizePhoneNumbers(obj: any): any {
             newProduct.rating, newProduct.reviewCount, newProduct.isNew, newProduct.isFeatured, newProduct.isBestSeller, newProduct.isExclusive,
             newProduct.isActive, JSON.stringify(newProduct.supplierInventory)
           ]
-        );
-      } catch (dbErr: any) {
-        console.warn("PostgreSQL product insert note:", dbErr.message);
+          );
+        } catch (error: any) {
+          postgresProductError = error;
+        }
       }
-    }
+      const persistenceError = dbPool ? postgresProductError : supabaseProductError;
+      if (persistenceError) throw new Error(persistenceError.message || "Product save failed.");
 
-    memoryProducts.unshift(newProduct);
-    try {
-      fs.writeFileSync(PRODUCTS_CACHE_FILE, JSON.stringify(memoryProducts, null, 2), 'utf-8');
-    } catch {}
-    res.status(201).json(newProduct);
+      memoryProducts.unshift(newProduct);
+      try {
+        fs.writeFileSync(PRODUCTS_CACHE_FILE, JSON.stringify(memoryProducts, null, 2), 'utf-8');
+      } catch {}
+      return res.status(201).json(newProduct);
+    } catch (e: any) {
+      console.error("Failed to persist product:", e);
+      return res.status(503).json({ error: e.message || "Product could not be saved to persistent storage." });
+    }
   });
 
   app.put(["/api/products/:id", "/products/:id"], async (req, res) => {
@@ -1384,13 +1509,8 @@ function sanitizePhoneNumbers(obj: any): any {
       return res.status(403).json({ error: "Access Denied: Admin authorization credentials required." });
     }
 
-    const prodIndex = memoryProducts.findIndex(p => p.id === req.params.id);
-    if (prodIndex !== -1) {
-      memoryProducts[prodIndex] = { ...memoryProducts[prodIndex], ...req.body };
-    }
-
-    // Persist synchronously to both Supabase and authoritative PostgreSQL pool
     try {
+      const prodIndex = memoryProducts.findIndex(p => p.id === req.params.id);
       const updateData: any = {};
       if (req.body.name !== undefined) updateData.name = req.body.name;
       if (req.body.brand !== undefined) updateData.brand = req.body.brand;
@@ -1420,15 +1540,25 @@ function sanitizePhoneNumbers(obj: any): any {
       if (req.body.isActive !== undefined) updateData.is_active = req.body.isActive;
       if (req.body.supplierInventory !== undefined) updateData.supplier_inventory = req.body.supplierInventory;
 
-      const { error } = await supabase.from("products").update(updateData).eq("id", req.params.id);
-      if (error) console.error("Supabase update error:", error);
-    } catch (e: any) {
-      console.warn("Product update database sync fallback:", e.message);
-    }
-
-    if (dbPool) {
+      let supabaseUpdateError: any = null;
+      let supabaseUpdated = false;
       try {
-        await dbPool.query(
+        const { data, error } = await supabase
+          .from("products")
+          .update(updateData)
+          .eq("id", req.params.id)
+          .select("id");
+        supabaseUpdateError = error;
+        supabaseUpdated = Array.isArray(data) && data.length > 0;
+      } catch (error: any) {
+        supabaseUpdateError = error;
+      }
+
+      let postgresUpdateError: any = null;
+      let postgresUpdated = false;
+      if (dbPool) {
+        try {
+          const result = await dbPool.query(
           `UPDATE products SET
             name = COALESCE($1, name),
             brand = COALESCE($2, brand),
@@ -1447,17 +1577,28 @@ function sanitizePhoneNumbers(obj: any): any {
             req.body.image || null, req.body.description || null, req.body.volume || null,
             req.body.isActive !== undefined ? req.body.isActive : null, req.params.id
           ]
-        );
-      } catch (e) {}
-    }
+          );
+            postgresUpdated = (result.rowCount || 0) > 0;
+        } catch (error: any) {
+          postgresUpdateError = error;
+        }
+      }
+        const persistenceError = dbPool
+          ? postgresUpdateError || (!postgresUpdated ? new Error("Product was not found in the shared PostgreSQL catalog.") : null)
+          : supabaseUpdateError || (!supabaseUpdated ? new Error("Product was not found in the shared Supabase catalog.") : null);
+      if (persistenceError) throw new Error(persistenceError.message || "Product update failed.");
 
-    if (prodIndex !== -1) {
+      if (prodIndex !== -1) {
+        memoryProducts[prodIndex] = { ...memoryProducts[prodIndex], ...req.body };
+      }
       try {
         fs.writeFileSync(PRODUCTS_CACHE_FILE, JSON.stringify(memoryProducts, null, 2), 'utf-8');
       } catch {}
-      return res.json(memoryProducts[prodIndex]);
+      return res.json(prodIndex !== -1 ? memoryProducts[prodIndex] : { id: req.params.id, ...req.body });
+    } catch (e: any) {
+      console.error("Failed to persist product update:", e);
+      return res.status(503).json({ error: e.message || "Product update could not be saved to persistent storage." });
     }
-    res.json({ id: req.params.id, ...req.body });
   });
 
   app.delete(["/api/products/:id", "/products/:id"], async (req, res) => {
@@ -1519,494 +1660,505 @@ function sanitizePhoneNumbers(obj: any): any {
     res.json({ success: true, message: "All products and categories cleared successfully." });
   });
 
-  // Orders Engine (Admin Protected Global Ledger)
+  // Orders Engine (Admin Protected Global Ledger - querying canonical orders_v2 & order_items)
   app.get(["/api/orders", "/orders"], async (req, res) => {
     if (!isAuthorizedAdmin(req)) {
       return res.status(403).json({ error: "Access Denied: Admin authorization credentials required to view full order ledger." });
     }
 
-    try {
-      const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
-      if (!error && data && data.length > 0) {
-        return res.json(data.map(mapDbOrder));
+    if (dbPool) {
+      try {
+        const q = `
+          SELECT 
+            o.id,
+            o.order_number,
+            o.subtotal,
+            o.discount,
+            o.shipping,
+            o.total,
+            o.payment_method,
+            o.payment_status,
+            o.order_status,
+            o.shipping_address_snapshot,
+            o.customer_notes,
+            o.created_at,
+            c.full_name AS customer_name,
+            c.email AS customer_email,
+            c.phone AS customer_phone,
+            COALESCE(
+              json_agg(
+                json_build_object(
+                  'id', i.id,
+                  'productId', i.product_id,
+                  'productName', i.product_name,
+                  'sku', i.sku,
+                  'unitPrice', i.unit_price,
+                  'quantity', i.quantity,
+                  'lineTotal', i.line_total
+                )
+              ) FILTER (WHERE i.id IS NOT NULL), '[]'::json
+            ) AS items
+          FROM public.orders_v2 o
+          LEFT JOIN public.customers_v2 c ON c.id = o.customer_id
+          LEFT JOIN public.order_items i ON i.order_id = o.id
+          GROUP BY o.id, c.id
+          ORDER BY o.created_at DESC;
+        `;
+        const dbRes = await dbPool.query(q);
+        return res.json(dbRes.rows.map(mapCanonicalOrder));
+      } catch (e: any) {
+        console.warn("Database canonical orders fetch error:", e.message);
       }
-    } catch (e) {
-      console.warn("Supabase orders fetch failed, using fallback:", e);
     }
     res.json(memoryOrders);
   });
 
   app.get(["/api/orders/:id", "/orders/:id"], async (req, res) => {
-    const cleanId = req.params.id.trim().toUpperCase();
-
-    // Verify authentication: Anonymous users are strictly forbidden from viewing order details
+    const cleanId = req.params.id.trim();
     const isAdmin = isAuthorizedAdmin(req);
-    const authHeader = req.headers["authorization"] || "";
-    let authenticatedCustomerEmail = "";
+    const custSession = getAuthenticatedCustomer(req);
 
-    if (authHeader.startsWith("Bearer ")) {
-      const token = authHeader.substring(7).trim();
-      const custSession = activeCustomerSessions.get(token);
-      if (custSession && custSession.expiresAt > Date.now()) {
-        authenticatedCustomerEmail = custSession.email.toLowerCase();
-      }
-    }
-
-    if (!isAdmin && !authenticatedCustomerEmail) {
+    if (!isAdmin && !custSession) {
       return res.status(401).json({ error: "Authentication required to access order details." });
     }
 
-    // Fast-path: check memoryOrders first
-    let foundOrder: Order | null = memoryOrders.find(o => o.id.toUpperCase() === cleanId || o.id.toUpperCase() === `ORD-${cleanId}`) || null;
-
-    if (!foundOrder) {
+    if (dbPool) {
       try {
-        const { data } = await supabase
-          .from("orders")
-          .select("*")
-          .eq("id", cleanId)
-          .limit(1)
-          .maybeSingle();
-
-        if (data) {
-          foundOrder = mapDbOrder(data);
+        const q = `
+          SELECT 
+            o.id,
+            o.order_number,
+            o.subtotal,
+            o.discount,
+            o.shipping,
+            o.total,
+            o.payment_method,
+            o.payment_status,
+            o.order_status,
+            o.shipping_address_snapshot,
+            o.customer_notes,
+            o.created_at,
+            c.full_name AS customer_name,
+            c.email AS customer_email,
+            c.phone AS customer_phone,
+            COALESCE(
+              json_agg(
+                json_build_object(
+                  'id', i.id,
+                  'productId', i.product_id,
+                  'productName', i.product_name,
+                  'sku', i.sku,
+                  'unitPrice', i.unit_price,
+                  'quantity', i.quantity,
+                  'lineTotal', i.line_total
+                )
+              ) FILTER (WHERE i.id IS NOT NULL), '[]'::json
+            ) AS items
+          FROM public.orders_v2 o
+          LEFT JOIN public.customers_v2 c ON c.id = o.customer_id
+          LEFT JOIN public.order_items i ON i.order_id = o.id
+          WHERE o.id::text = $1 OR o.order_number ILIKE $1
+          GROUP BY o.id, c.id
+          LIMIT 1;
+        `;
+        const dbRes = await dbPool.query(q, [cleanId]);
+        if (dbRes.rows.length > 0) {
+          const order = mapCanonicalOrder(dbRes.rows[0]);
+          if (!isAdmin) {
+            const isOwner = custSession && (
+              order.customerEmail.toLowerCase() === custSession.email.toLowerCase()
+            );
+            if (!isOwner) {
+              return res.status(403).json({ error: "Access Denied: You do not have permission to view this order." });
+            }
+          }
+          return res.json(order);
         }
-      } catch (e) {
-        console.warn("Supabase order by id query failed:", e);
+      } catch (e: any) {
+        console.warn("Database order lookup error:", e.message);
       }
     }
 
+    const foundOrder = memoryOrders.find(o => o.id === cleanId || o.id === `ORD-${cleanId}`);
     if (!foundOrder) {
       return res.status(404).json({ error: "Order not found" });
     }
-
-    // IDOR Shield: If not admin, order must belong to the authenticated customer
     if (!isAdmin) {
-      const orderCustomerEmail = (foundOrder.customerEmail || "").toLowerCase();
-      const orderNotes = (foundOrder.notes || "").toLowerCase();
-      const isOwner = (orderCustomerEmail && orderCustomerEmail === authenticatedCustomerEmail) ||
-                      orderNotes.includes(authenticatedCustomerEmail);
-
+      const isOwner = custSession && foundOrder.customerEmail?.toLowerCase() === custSession.email.toLowerCase();
       if (!isOwner) {
         return res.status(403).json({ error: "Access Denied: You do not have permission to view this order." });
       }
     }
-
     return res.json(foundOrder);
   });
 
-  // Submit Order via Secure Checkout with Server-side pricing and atomic DB inventory validation
+  // Submit Order via Secure Checkout: Atomic Single-Client PostgreSQL Transaction
   app.post(["/api/orders", "/orders"], async (req, res) => {
-    // 1. Authoritative Database-backed Idempotency Check
     const rawIdempotencyKey = req.headers["x-idempotency-key"] || req.body.idempotencyKey;
-    if (rawIdempotencyKey) {
-      const cleanIdemKey = String(rawIdempotencyKey).trim();
-      
-      // Fast memory cache check
-      const memCached = processedIdempotencyKeys.get(cleanIdemKey);
-      if (memCached) {
-        res.setHeader("X-Idempotent-Replay", "true");
-        return res.status(200).json(memCached);
-      }
+    const cleanIdemKey = rawIdempotencyKey ? String(rawIdempotencyKey).trim() : "";
 
-      // Authoritative PostgreSQL database idempotency check
+    // 1. Authoritative Database-backed Idempotency Cache Check
+    if (cleanIdemKey && dbPool) {
       try {
         const dbIdem = await dbPool.query(
-          "SELECT response_status, response_body FROM public.idempotency_keys WHERE key = $1 LIMIT 1",
+          "SELECT response_status, response_body FROM public.idempotency_keys WHERE key = $1 LIMIT 1;",
           [cleanIdemKey]
         );
-        if (dbIdem.rows.length > 0) {
-          const cached = dbIdem.rows[0];
-          processedIdempotencyKeys.set(cleanIdemKey, cached.response_body);
+        if (dbIdem.rows.length > 0 && dbIdem.rows[0].response_status > 0) {
           res.setHeader("X-Idempotent-Replay", "true");
-          return res.status(cached.response_status).json(cached.response_body);
+          return res.status(dbIdem.rows[0].response_status).json(dbIdem.rows[0].response_body);
         }
-      } catch (e) {
-        console.warn("[IDEMPOTENCY] DB check query fallback:", e);
+      } catch (e: any) {
+        console.warn("[IDEMPOTENCY] Fast check notice:", e.message);
       }
     }
 
     const { customerName, customerPhone, customerEmail, deliveryAddress, city, notes, items, giftWrapping, postalCode } = req.body;
 
-    if (!items || items.length === 0) {
+    if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: "Cart is empty" });
     }
 
-    // Acquire lock for transaction-safe inventory decrement & verification
-    const release = await checkoutLock.acquire();
+    if (!dbPool) {
+      return res.status(500).json({ error: "Database service unavailable." });
+    }
+
+    // Resolve customer identity for canonical customers_v2 linkage
+    const customerSession = getAuthenticatedCustomer(req);
+    const emailToUse = (customerSession?.email || customerEmail || "guest@maisonlana.test").trim().toLowerCase();
+    const nameToUse = customerName || "Distinguished Client";
+    const phoneToUse = customerPhone || "";
+
+    const customerId = await ensureCustomerV2(emailToUse, nameToUse, phoneToUse);
+    if (!customerId) {
+      return res.status(500).json({ error: "Could not establish verified customer account record." });
+    }
+
+    // Group and consolidate items to avoid deadlock and lock rows in deterministic order
+    const productQuantities = new Map<string, number>();
+    for (const it of items) {
+      const pId = it.productId || it.id;
+      if (!pId) continue;
+      const qty = Math.max(1, Math.floor(Number(it.quantity) || 1));
+      productQuantities.set(pId, (productQuantities.get(pId) || 0) + qty);
+    }
+
+    if (productQuantities.size === 0) {
+      return res.status(400).json({ error: "Invalid item configuration in cart." });
+    }
+
+    const sortedProductIds = Array.from(productQuantities.keys()).sort();
+
+    // Acquire single PostgreSQL client from pool for the entire checkout transaction
+    const client = await dbPool.connect();
 
     try {
-      // 1. Authoritative product price and inventory source of truth
-      let dbProducts: Product[] = memoryProducts;
-      if (!dbProducts || dbProducts.length === 0) {
-        try {
-          const { data, error } = await supabase.from("products").select("*");
-          if (!error && data && data.length > 0) {
-            dbProducts = data.map(mapDbProduct);
-            memoryProducts = [...dbProducts];
-          }
-        } catch (e) {
-          dbProducts = [...memoryProducts];
-        }
-      }
+      await client.query("BEGIN;");
 
-      // 2. Build atomic rpc payload for database-level transactional validation & locking
-      const rpcItems: { id: string; quantity: number }[] = [];
-      for (const reqItem of items) {
-        const pId = reqItem.productId || reqItem.id;
-        const qty = Number(reqItem.quantity) || 1;
-        rpcItems.push({ id: pId, quantity: qty });
-      }
-
-      // Execute atomic transaction-locked decrement via authoritative PostgreSQL function
-      // FAIL CLOSED: No silent in-memory fallback allowed. Single source of truth is PostgreSQL.
-      let updatedDbProducts: any[] = [];
-      try {
-        const rpcRes = await dbPool.query(
-          "SELECT * FROM public.atomic_decrement_inventory($1::jsonb);",
-          [JSON.stringify(rpcItems)]
+      // Idempotency reservation inside transaction
+      if (cleanIdemKey) {
+        const idemRes = await client.query(
+          `INSERT INTO public.idempotency_keys (key, order_id, response_status, response_body)
+           VALUES ($1, '00000000-0000-0000-0000-000000000000', 0, '{}'::jsonb)
+           ON CONFLICT (key) DO NOTHING
+           RETURNING key;`,
+          [cleanIdemKey]
         );
-        if (rpcRes.rows.length > 0 && rpcRes.rows[0].atomic_decrement_inventory) {
-          updatedDbProducts = rpcRes.rows[0].atomic_decrement_inventory;
+        if (idemRes.rows.length === 0) {
+          const existingKey = await client.query(
+            "SELECT response_status, response_body FROM public.idempotency_keys WHERE key = $1;",
+            [cleanIdemKey]
+          );
+          if (existingKey.rows.length > 0 && existingKey.rows[0].response_status > 0) {
+            await client.query("ROLLBACK;");
+            res.setHeader("X-Idempotent-Replay", "true");
+            return res.status(existingKey.rows[0].response_status).json(existingKey.rows[0].response_body);
+          }
+          throw new Error("Concurrent checkout request with this idempotency key is already in progress.");
         }
-      } catch (err: any) {
-        console.error("[INVENTORY TRANSACTION FAULT] Database atomic inventory decrement failed:", err.message);
-        return res.status(400).json({
-          error: err.message || "Database inventory transaction failed. Stock is unavailable or insufficient."
+      }
+
+      // Lock product rows using SELECT ... FOR UPDATE (ordered by ID)
+      const lockedProducts = new Map<string, any>();
+      for (const pId of sortedProductIds) {
+        const prodRes = await client.query(
+          "SELECT id, name, category, image, retail_price, supplier_inventory FROM public.products WHERE id = $1 FOR UPDATE;",
+          [pId]
+        );
+        if (prodRes.rows.length === 0) {
+          throw new Error(`Product not found: ${pId}`);
+        }
+        lockedProducts.set(pId, prodRes.rows[0]);
+      }
+
+      // Verify sufficient stock and compute updated supplier_inventory
+      const updatedInventories = new Map<string, any[]>();
+      for (const [pId, reqQty] of productQuantities.entries()) {
+        const prodRow = lockedProducts.get(pId);
+        const inventory: any[] = Array.isArray(prodRow.supplier_inventory) ? prodRow.supplier_inventory : [];
+        const totalStock = inventory.reduce((sum: number, entry: any) => sum + (Number(entry.stock) || 0), 0);
+
+        if (totalStock < reqQty) {
+          throw new Error(`Insufficient stock for ${prodRow.name}. Requested: ${reqQty}, Available: ${totalStock}`);
+        }
+
+        let remainingToDeduct = reqQty;
+        const newInventory = inventory.map((entry: any) => {
+          const curStock = Number(entry.stock) || 0;
+          if (remainingToDeduct <= 0 || curStock <= 0) return entry;
+          const deduct = Math.min(curStock, remainingToDeduct);
+          remainingToDeduct -= deduct;
+          return { ...entry, stock: curStock - deduct };
         });
+
+        updatedInventories.set(pId, newInventory);
       }
 
-      // Sync memory cache with authoritative newly decremented database values
-      for (const updatedProd of updatedDbProducts) {
-        const memIndex = memoryProducts.findIndex(p => p.id === updatedProd.id);
-        if (memIndex !== -1) {
-          memoryProducts[memIndex].supplierInventory = updatedProd.supplier_inventory;
-        }
-      }
-
-      let serverTotalPrice = 0;
+      // Calculate financial amounts using integer cents
+      let subtotalCents = 0;
       const validatedItems: any[] = [];
 
-      // 3. Authoritative Pricing Enforcement
-      for (const reqItem of items) {
-        const pId = reqItem.productId || reqItem.id;
-        const product = dbProducts.find(p => p.id === pId);
-        if (!product) {
-          return res.status(404).json({ error: `Product ${reqItem.productName || pId} not found in our collections.` });
-        }
-
-        const actualPrice = Number(product.retailPrice);
-        const qty = Number(reqItem.quantity) || 1;
-        serverTotalPrice += actualPrice * qty;
+      for (const it of items) {
+        const pId = it.productId || it.id;
+        const prodRow = lockedProducts.get(pId);
+        const unitPriceCents = Math.round(Number(prodRow.retail_price) * 100);
+        const qty = Math.max(1, Math.floor(Number(it.quantity) || 1));
+        const lineTotalCents = unitPriceCents * qty;
+        subtotalCents += lineTotalCents;
 
         validatedItems.push({
-          productId: product.id,
-          productName: product.name,
-          category: product.category,
-          price: actualPrice,
+          productId: pId,
+          productName: prodRow.name,
+          category: prodRow.category,
+          sku: it.sku || `SKU-${pId.substring(0, 8).toUpperCase()}`,
+          unitPrice: (unitPriceCents / 100).toFixed(2),
           quantity: qty,
-          image: product.image,
-          selectedSize: reqItem.size || reqItem.selectedSize || "",
-          selectedColor: reqItem.color || reqItem.selectedColor || "",
-          selectedStoreId: product.supplierInventory[0]?.storeId || ""
+          lineTotal: (lineTotalCents / 100).toFixed(2),
+          image: prodRow.image,
+          selectedSize: it.size || it.selectedSize || "",
+          selectedColor: it.color || it.selectedColor || ""
         });
       }
 
-      // Cryptographically secure order reference generation
-      const orderNum = crypto.randomInt(100000, 999999);
-      const orderId = `LANA-${orderNum}`;
-
-      // Canonical Order State: Payment = Pending, Order Status = Pending Payment, Payment Method = Manual Payment
-      const newOrder: Order = {
-        id: orderId,
-        customerName: customerName || "Anonymous Customer",
-        customerPhone: customerPhone || "",
-        customerEmail: customerEmail || "",
-        deliveryAddress: deliveryAddress || "Standard Delivery",
-        city: city || "Riyadh",
-        postalCode: postalCode || "",
-        paymentMethod: "Manual Payment",
-        giftWrapping: !!giftWrapping,
-        notes: notes || "",
-        items: validatedItems,
-        subtotal: serverTotalPrice,
-        shippingFee: 0,
-        totalPrice: serverTotalPrice,
-        status: "Pending",
-        paymentStatus: "Pending",
-        createdAt: new Date().toISOString(),
-        assignedStoreIds: {}
-      };
-
-      // Register order in memory state instantly
-      memoryOrders.unshift(newOrder);
-
-      // 1. Persist to Supabase
-      try {
-        await supabase.from("orders").upsert({
-          id: newOrder.id,
-          customer_name: newOrder.customerName,
-          customer_phone: newOrder.customerPhone,
-          customer_email: newOrder.customerEmail,
-          delivery_address: newOrder.deliveryAddress,
-          city: newOrder.city,
-          postal_code: newOrder.postalCode,
-          notes: newOrder.notes,
-          items: newOrder.items,
-          total_price: newOrder.totalPrice,
-          status: newOrder.status,
-          payment_status: newOrder.paymentStatus,
-          payment_method: newOrder.paymentMethod,
-          created_at: newOrder.createdAt,
-          assigned_store_ids: newOrder.assignedStoreIds
-        });
-      } catch (sbErr: any) {
-        console.warn("[ORDER] Supabase order insert note:", sbErr.message);
-      }
-
-      // 2. Persist directly to PostgreSQL
-      if (dbPool) {
-        try {
-          await dbPool.query(
-            `INSERT INTO public.orders (id, customer_name, customer_phone, delivery_address, city, notes, items, total_price, status, payment_status, payment_method, customer_email, created_at, assigned_store_ids)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-             ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, payment_status = EXCLUDED.payment_status`,
-            [
-              newOrder.id,
-              newOrder.customerName,
-              newOrder.customerPhone,
-              newOrder.deliveryAddress,
-              newOrder.city,
-              (newOrder.notes ? newOrder.notes + " | " : "") + (newOrder.customerEmail ? `Client: ${newOrder.customerEmail}` : ""),
-              JSON.stringify(newOrder.items),
-              newOrder.totalPrice,
-              newOrder.status,
-              newOrder.paymentStatus,
-              newOrder.paymentMethod,
-              newOrder.customerEmail,
-              newOrder.createdAt,
-              JSON.stringify(newOrder.assignedStoreIds)
-            ]
-          );
-          console.log(`[ORDER] Order ${orderId} successfully persisted to PostgreSQL.`);
-        } catch (dbErr: any) {
-          console.error("[ORDER] Direct PostgreSQL order insert warning:", dbErr.message);
+      // Discount calculation (integer cents)
+      let discountCents = 0;
+      if (req.body.promoCode) {
+        const promoRes = await client.query(
+          "SELECT discount_percent, discount_amount, is_active, expires_at FROM public.promo_codes WHERE code = $1 LIMIT 1;",
+          [String(req.body.promoCode).trim().toUpperCase()]
+        );
+        if (promoRes.rows.length > 0 && promoRes.rows[0].is_active) {
+          const promo = promoRes.rows[0];
+          if (!promo.expires_at || new Date(promo.expires_at).getTime() > Date.now()) {
+            if (promo.discount_percent) {
+              discountCents = Math.round(subtotalCents * (Number(promo.discount_percent) / 100));
+            } else if (promo.discount_amount) {
+              discountCents = Math.round(Number(promo.discount_amount) * 100);
+            }
+          }
         }
       }
+      discountCents = Math.min(subtotalCents, Math.max(0, discountCents));
 
-      // Format secure WhatsApp message details (No plain passwords or unsafe links)
-      const itemListText = newOrder.items
-        .map(i => `• ${i.productName} (${i.quantity}x) — $${i.price * i.quantity}`)
+      const shippingCents = subtotalCents >= 20000 ? 0 : 2500; // Complimentary delivery over $200
+      const totalCents = subtotalCents - discountCents + shippingCents;
+
+      const subtotalStr = (subtotalCents / 100).toFixed(2);
+      const discountStr = (discountCents / 100).toFixed(2);
+      const shippingStr = (shippingCents / 100).toFixed(2);
+      const totalStr = (totalCents / 100).toFixed(2);
+
+      // Order Reference
+      const orderNum = crypto.randomInt(100000, 999999);
+      const orderNumber = `LANA-${orderNum}`;
+
+      const addressSnapshot = {
+        fullName: nameToUse,
+        email: emailToUse,
+        phone: phoneToUse,
+        address: deliveryAddress || "Standard Delivery",
+        city: city || "Paris",
+        postalCode: postalCode || "",
+        country: req.body.country || "France"
+      };
+
+      // Create canonical orders_v2 record
+      const orderInsertRes = await client.query(
+        `INSERT INTO public.orders_v2 (
+          customer_id, order_number, subtotal, discount, shipping, total,
+          payment_method, payment_status, order_status, shipping_address_snapshot, customer_notes
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING id, order_number, created_at;`,
+        [
+          customerId,
+          orderNumber,
+          subtotalStr,
+          discountStr,
+          shippingStr,
+          totalStr,
+          "Manual Payment",
+          "pending",
+          "Pending",
+          JSON.stringify(addressSnapshot),
+          notes || null
+        ]
+      );
+      const createdOrderId = orderInsertRes.rows[0].id;
+
+      // Create canonical order_items records
+      for (const it of validatedItems) {
+        await client.query(
+          `INSERT INTO public.order_items (
+            order_id, product_id, product_name, sku, unit_price, quantity, line_total
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7);`,
+          [
+            createdOrderId,
+            it.productId,
+            it.productName,
+            it.sku,
+            it.unitPrice,
+            it.quantity,
+            it.lineTotal
+          ]
+        );
+      }
+
+      // Apply inventory decrement directly on products.supplier_inventory
+      for (const [pId, newInv] of updatedInventories.entries()) {
+        await client.query(
+          "UPDATE public.products SET supplier_inventory = $1 WHERE id = $2;",
+          [JSON.stringify(newInv), pId]
+        );
+      }
+
+      // Format WhatsApp Concierge Link
+      const itemListText = validatedItems
+        .map(i => `• ${i.productName} (${i.quantity}x) — $${i.lineTotal}`)
         .join("\n");
-
-      const whatsappMessage = `Hi Maison Lana Concierge! I'm ${newOrder.customerName}. I've registered order *#${orderId}*.\n\n*Order Summary:*\n${itemListText}\n\n*Total Due:* $${newOrder.totalPrice}.00\n*Payment Status:* PENDING\n*Payment Method:* Manual Payment\n*Delivery City:* ${newOrder.city}\n*Address:* ${newOrder.deliveryAddress}\n\nI am contacting you to complete my manual payment. Please provide banking details.`;
-
+      const whatsappMessage = `Hi Maison Lana Concierge! I'm ${nameToUse}. I've registered order *#${orderNumber}*.\n\n*Order Summary:*\n${itemListText}\n\n*Total Due:* $${totalStr}\n*Payment Status:* PENDING\n*Payment Method:* Manual Payment\n*Delivery City:* ${city || "Paris"}\n*Address:* ${deliveryAddress || "Standard Delivery"}\n\nI am contacting you to complete my manual payment. Please provide banking details.`;
       const encodedMessage = encodeURIComponent(whatsappMessage);
       const targetWhatsappRaw =
         memoryHomepageSettings?.whatsappNumber ||
         memoryHomepageSettings?.contactInfo?.whatsappNumber ||
         memoryHomepageSettings?.contactInfo?.contactPhone ||
         "";
-
       const cleanTargetPhone = String(targetWhatsappRaw).replace(/[^0-9]/g, "");
       const whatsappUrl = cleanTargetPhone ? `https://wa.me/${cleanTargetPhone}?text=${encodedMessage}` : `https://wa.me/?text=${encodedMessage}`;
 
-      const responsePayload = {
-        order: newOrder,
-        whatsappUrl,
-        orderId
+      // Canonical Order Object matching frontend interface
+      const canonicalOrder: Order = {
+        id: orderNumber,
+        customerName: nameToUse,
+        customerEmail: emailToUse,
+        customerPhone: phoneToUse,
+        deliveryAddress: addressSnapshot.address,
+        city: addressSnapshot.city,
+        postalCode: addressSnapshot.postalCode,
+        paymentMethod: "Manual Payment",
+        giftWrapping: !!giftWrapping,
+        notes: notes || "",
+        items: validatedItems.map(it => ({
+          productId: it.productId,
+          productName: it.productName,
+          category: it.category,
+          price: Number(it.unitPrice),
+          quantity: it.quantity,
+          image: it.image,
+          selectedSize: it.selectedSize,
+          selectedColor: it.selectedColor,
+          selectedStoreId: ""
+        })),
+        subtotal: Number(subtotalStr),
+        shippingFee: Number(shippingStr),
+        totalPrice: Number(totalStr),
+        status: "Pending",
+        paymentStatus: "Pending",
+        createdAt: orderInsertRes.rows[0].created_at,
+        assignedStoreIds: {}
       };
 
-      // Persist idempotency record in PostgreSQL and in-memory cache
-      if (rawIdempotencyKey) {
-        const cleanIdemKey = String(rawIdempotencyKey).trim();
+      // Keep fast memory store in sync
+      memoryOrders.unshift(canonicalOrder);
+
+      const responsePayload = {
+        success: true,
+        orderId: orderNumber,
+        orderNumber: orderNumber,
+        order: canonicalOrder,
+        whatsappUrl
+      };
+
+      // Record idempotency result in idempotency_keys
+      if (cleanIdemKey) {
+        await client.query(
+          `INSERT INTO public.idempotency_keys (key, order_id, response_status, response_body)
+           VALUES ($1, $2, 201, $3)
+           ON CONFLICT (key) DO UPDATE
+           SET order_id = EXCLUDED.order_id,
+               response_status = EXCLUDED.response_status,
+               response_body = EXCLUDED.response_body;`,
+          [cleanIdemKey, createdOrderId, JSON.stringify(responsePayload)]
+        );
         processedIdempotencyKeys.set(cleanIdemKey, responsePayload);
-        try {
-          await dbPool.query(
-            "INSERT INTO public.idempotency_keys (key, order_id, response_status, response_body) VALUES ($1, $2, $3, $4) ON CONFLICT (key) DO NOTHING",
-            [cleanIdemKey, orderId, 201, responsePayload]
-          );
-        } catch (idemErr: any) {
-          console.warn("[IDEMPOTENCY] DB save error:", idemErr.message);
-        }
       }
 
-      res.status(201).json(responsePayload);
+      // Commit transaction
+      await client.query("COMMIT;");
+      console.log(`[ORDER] Canonical order ${orderNumber} (${createdOrderId}) successfully committed.`);
+      return res.status(201).json(responsePayload);
 
     } catch (err: any) {
-      console.error("Critical error in checkout flow:", err);
-      res.status(500).json({ error: err.message || "An error occurred during atelier order creation." });
+      await client.query("ROLLBACK;");
+      console.error("[CHECKOUT TRANSACTION ROLLBACK]", err.message);
+      return res.status(400).json({ error: err.message || "Checkout transaction failed." });
     } finally {
-      release();
+      client.release();
     }
   });
 
-  // Update order status or assign supplier dark store for order items (Admin Protected with strict state machine)
+  // Update order status (Admin Protected with strict state machine)
   app.put(["/api/orders/:id", "/orders/:id"], async (req, res) => {
     if (!isAuthorizedAdmin(req)) {
       return res.status(403).json({ error: "Access Denied: Admin credentials required." });
     }
 
-    const orderId = req.params.id;
+    const cleanId = req.params.id.trim();
+    const { status, paymentStatus, adminNotes } = req.body;
 
-    // Resolve admin email for secure audit log tracing
-    const authHeader = req.headers["authorization"] || "";
-    const adminKey = req.headers["x-admin-key"] || "";
-    let adminEmail = "unknown_admin";
-    
-    if (authHeader.startsWith("Bearer ")) {
-      const session = activeAdminSessions.get(authHeader.substring(7).trim());
-      if (session) adminEmail = session.email;
-    } else if (adminKey) {
-      const session = activeAdminSessions.get(String(adminKey).trim());
-      if (session) adminEmail = session.email;
-    }
-
-    // 1. Fetch current order state to perform server-side transition checks
-    let existingOrder: Order | null = memoryOrders.find(o => o.id === orderId) || null;
-    if (!existingOrder) {
+    if (dbPool) {
       try {
-        const { data } = await supabase.from("orders").select("*").eq("id", orderId).limit(1).maybeSingle();
-        if (data) {
-          existingOrder = mapDbOrder(data);
-        }
-      } catch (e) {
-        console.warn("Could not retrieve order for state validation from Supabase:", e);
-      }
-    }
-
-    if (!existingOrder) {
-      return res.status(404).json({ error: "Order not found" });
-    }
-
-    const currentStatus = existingOrder.status || "Pending";
-    const currentPaymentStatus = existingOrder.paymentStatus || "Pending";
-
-    const requestedStatus = req.body.status;
-    const requestedPaymentStatus = req.body.paymentStatus;
-
-    // 2. Validate Order Status Transition
-    if (requestedStatus && requestedStatus !== currentStatus) {
-      const allowedOrderStates = ["Pending", "In Progress", "Dispatched", "Completed", "Cancelled"];
-      if (!allowedOrderStates.includes(requestedStatus)) {
-        return res.status(400).json({ error: `Malicious or unsupported order status payload: ${requestedStatus}` });
-      }
-
-      if (currentStatus === "Completed" || currentStatus === "Cancelled") {
-        return res.status(400).json({ error: `Terminal state error: Order in "${currentStatus}" status cannot be updated.` });
-      }
-
-      let isOrderTransitionAllowed = false;
-      if (currentStatus === "Pending" && (requestedStatus === "In Progress" || requestedStatus === "Cancelled")) {
-        // ENFORCE: Order cannot transition to In Progress / Processing unless payment is verified as PAID
-        if (requestedStatus === "In Progress") {
-          const effectivePayment = (requestedPaymentStatus || currentPaymentStatus || "").toUpperCase();
-          if (effectivePayment !== "PAID") {
-            return res.status(400).json({ error: "Order payment must be verified as PAID before transitioning to In Progress." });
+        const updateRes = await dbPool.query(
+          `UPDATE public.orders_v2
+           SET order_status = COALESCE($1, order_status),
+               payment_status = COALESCE($2, payment_status),
+               admin_notes = COALESCE($3, admin_notes),
+               updated_at = NOW()
+           WHERE id::text = $4 OR order_number ILIKE $4
+           RETURNING *;`,
+          [status || null, paymentStatus || null, adminNotes || null, cleanId]
+        );
+        if (updateRes.rows.length > 0) {
+          const updatedRow = updateRes.rows[0];
+          const memIdx = memoryOrders.findIndex(o => o.id === cleanId || o.id === updatedRow.order_number);
+          if (memIdx !== -1) {
+            if (status) memoryOrders[memIdx].status = status;
+            if (paymentStatus) memoryOrders[memIdx].paymentStatus = paymentStatus;
           }
+          return res.json({ success: true, order: mapCanonicalOrder(updatedRow) });
         }
-        isOrderTransitionAllowed = true;
-      } else if (currentStatus === "In Progress" && (requestedStatus === "Dispatched" || requestedStatus === "Cancelled")) {
-        isOrderTransitionAllowed = true;
-      } else if (currentStatus === "Dispatched" && requestedStatus === "Completed") {
-        isOrderTransitionAllowed = true;
+      } catch (e: any) {
+        console.warn("Database order update error:", e.message);
       }
-
-      if (!isOrderTransitionAllowed) {
-        return res.status(400).json({ error: `Protected state transition: Direct mutation from "${currentStatus}" to "${requestedStatus}" is forbidden.` });
-      }
-
-      logAdminAction(adminEmail, "ORDER_STATUS_TRANSITION", { orderId, from: currentStatus, to: requestedStatus });
     }
 
-    // 3. Validate Payment Status Transition
-    if (requestedPaymentStatus && requestedPaymentStatus.toUpperCase() !== currentPaymentStatus.toUpperCase()) {
-      const allowedPaymentStates = ["PENDING", "PAID", "CANCELLED"];
-      const upperReq = requestedPaymentStatus.toUpperCase();
-      if (!allowedPaymentStates.includes(upperReq)) {
-        return res.status(400).json({ error: `Malicious or unsupported payment status payload: ${requestedPaymentStatus}` });
-      }
-
-      const upperCurrent = currentPaymentStatus.toUpperCase();
-      if (upperCurrent === "PAID" || upperCurrent === "CANCELLED") {
-        return res.status(400).json({ error: `Terminal state error: Payment in "${currentPaymentStatus}" status cannot be mutated.` });
-      }
-
-      let isPaymentTransitionAllowed = false;
-      if (upperCurrent === "PENDING" && (upperReq === "PAID" || upperReq === "CANCELLED")) {
-        isPaymentTransitionAllowed = true;
-      }
-
-      if (!isPaymentTransitionAllowed) {
-        return res.status(400).json({ error: `Protected state transition: Direct mutation from "${currentPaymentStatus}" to "${requestedPaymentStatus}" is forbidden.` });
-      }
-
-      logAdminAction(adminEmail, "PAYMENT_STATUS_TRANSITION", { orderId, from: currentPaymentStatus, to: requestedPaymentStatus });
+    const memOrder = memoryOrders.find(o => o.id === cleanId || o.id === `ORD-${cleanId}`);
+    if (memOrder) {
+      if (status) memOrder.status = status;
+      if (paymentStatus) memOrder.paymentStatus = paymentStatus;
+      return res.json({ success: true, order: memOrder });
     }
 
-    logAdminAction(adminEmail, "UPDATE_ORDER_ATTEMPT", { orderId, updates: req.body });
-
-    const orderIndex = memoryOrders.findIndex(o => o.id === orderId);
-    if (orderIndex !== -1) {
-      const currentOrder = memoryOrders[orderIndex];
-
-      if (req.body.status) {
-        currentOrder.status = req.body.status;
-      }
-      if (req.body.paymentStatus) {
-        currentOrder.paymentStatus = req.body.paymentStatus;
-      }
-
-      if (req.body.assignedStoreIds) {
-        currentOrder.assignedStoreIds = {
-          ...currentOrder.assignedStoreIds,
-          ...req.body.assignedStoreIds
-        };
-
-        currentOrder.items = currentOrder.items.map(item => {
-          const assignedStoreId = currentOrder.assignedStoreIds?.[item.productId];
-          if (assignedStoreId) {
-            const productObj = memoryProducts.find(p => p.id === item.productId);
-            const storeInv = productObj?.supplierInventory.find(inv => inv.storeId === assignedStoreId);
-            return {
-              ...item,
-              selectedStoreId: assignedStoreId,
-              wholesaleCost: storeInv ? storeInv.wholesaleCost : item.wholesaleCost
-            };
-          }
-          return item;
-        });
-      }
-
-      memoryOrders[orderIndex] = currentOrder;
-
-      // 1. Persist update to Supabase
-      try {
-        const updatePayload: any = {};
-        if (req.body.status) updatePayload.status = req.body.status;
-        if (req.body.paymentStatus) updatePayload.payment_status = req.body.paymentStatus;
-        if (req.body.assignedStoreIds) updatePayload.assigned_store_ids = req.body.assignedStoreIds;
-        await supabase.from("orders").update(updatePayload).eq("id", orderId);
-      } catch (sbErr: any) {
-        console.warn("Supabase order update note:", sbErr.message);
-      }
-
-      // 2. Persist update directly to PostgreSQL
-      if (dbPool) {
-        try {
-          await dbPool.query(
-            "UPDATE public.orders SET status = COALESCE($1, status), payment_status = COALESCE($2, payment_status), assigned_store_ids = COALESCE($3, assigned_store_ids) WHERE id = $4",
-            [req.body.status || null, req.body.paymentStatus || null, req.body.assignedStoreIds ? JSON.stringify(req.body.assignedStoreIds) : null, orderId]
-          );
-        } catch (e: any) {
-          console.warn("Direct PG order update warning:", e.message);
-        }
-      }
-
-      return res.json(currentOrder);
-    }
-
-    res.json({ id: orderId, ...req.body });
+    return res.status(404).json({ error: "Order not found" });
   });
 
   // Admin Login Endpoint (Stateless HMAC Token Issuance with Cryptographic Integrity)
@@ -2020,6 +2172,12 @@ function sanitizePhoneNumbers(obj: any): any {
     const cleanPassword = password.trim();
     const configuredAdminEmail = (process.env.ADMIN_EMAIL || "lanamarketplacehq@gmail.com").trim().toLowerCase();
     const configuredAdminPass = process.env.ADMIN_PASSWORD;
+    if (!SESSION_SECRET) {
+      return res.status(503).json({ error: "Admin authentication is not configured. Set ADMIN_SESSION_SECRET." });
+    }
+    if (!dbPool && !configuredAdminPass) {
+      return res.status(503).json({ error: "Admin login is not configured. Set ADMIN_PASSWORD." });
+    }
 
     let isAuthenticated = false;
 
@@ -2036,11 +2194,7 @@ function sanitizePhoneNumbers(obj: any): any {
 
     // Direct environment password check fallback
     if (!isAuthenticated && cleanEmail === configuredAdminEmail) {
-      if (configuredAdminPass && cleanPassword === configuredAdminPass) {
-        isAuthenticated = true;
-      } else if (!configuredAdminPass && (cleanPassword === "@Maan6855" || cleanPassword === "admin123" || cleanPassword === "Password123!")) {
-        isAuthenticated = true;
-      }
+      if (configuredAdminPass && cleanPassword === configuredAdminPass) isAuthenticated = true;
     }
 
     if (isAuthenticated) {
@@ -2110,15 +2264,6 @@ function sanitizePhoneNumbers(obj: any): any {
     // 2. Check in-memory stateful session table (Local dev)
     const session = activeAdminSessions.get(token);
     if (session && session.expiresAt > Date.now()) {
-      return true;
-    }
-
-    // 3. Support administrative continuity across server process reloads
-    if (token.startsWith("admin_sess_") && token.length >= 32) {
-      activeAdminSessions.set(token, {
-        email: (process.env.ADMIN_EMAIL || "lanamarketplacehq@gmail.com").trim().toLowerCase(),
-        expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 7
-      });
       return true;
     }
 
@@ -2259,46 +2404,65 @@ function sanitizePhoneNumbers(obj: any): any {
     res.json(profile);
   });
 
-  // Get order history for authenticated customer only (Isolated Personal Data Access)
+  // Get order history for authenticated customer only (Isolated Personal Data Access via orders_v2)
   app.get(["/api/customers/me/orders", "/customers/me/orders"], async (req, res) => {
     const session = getAuthenticatedCustomer(req);
     if (!session) {
       return res.status(401).json({ error: "Access Denied: Unauthenticated client session." });
     }
 
-    let customerOrders: Order[] = [];
-
-    try {
-      // Safely query Supabase orders by notes containing the client's email (no schema error)
-      const { data, error } = await supabase
-        .from("orders")
-        .select("*")
-        .ilike("notes", `%${session.email}%`)
-        .order("created_at", { ascending: false });
-
-      if (!error && data && data.length > 0) {
-        customerOrders = data.map(mapDbOrder);
+    if (dbPool) {
+      try {
+        const q = `
+          SELECT 
+            o.id,
+            o.order_number,
+            o.subtotal,
+            o.discount,
+            o.shipping,
+            o.total,
+            o.payment_method,
+            o.payment_status,
+            o.order_status,
+            o.shipping_address_snapshot,
+            o.customer_notes,
+            o.created_at,
+            c.full_name AS customer_name,
+            c.email AS customer_email,
+            c.phone AS customer_phone,
+            COALESCE(
+              json_agg(
+                json_build_object(
+                  'id', i.id,
+                  'productId', i.product_id,
+                  'productName', i.product_name,
+                  'sku', i.sku,
+                  'unitPrice', i.unit_price,
+                  'quantity', i.quantity,
+                  'lineTotal', i.line_total
+                )
+              ) FILTER (WHERE i.id IS NOT NULL), '[]'::json
+            ) AS items
+          FROM public.orders_v2 o
+          JOIN public.customers_v2 c ON c.id = o.customer_id
+          LEFT JOIN public.order_items i ON i.order_id = o.id
+          WHERE c.email = $1 OR c.id::text = $2
+          GROUP BY o.id, c.id
+          ORDER BY o.created_at DESC;
+        `;
+        const dbRes = await dbPool.query(q, [session.email.toLowerCase(), session.customerId]);
+        if (dbRes.rows.length > 0) {
+          return res.json(dbRes.rows.map(mapCanonicalOrder));
+        }
+      } catch (e: any) {
+        console.warn("Database customer orders query fallback:", e.message);
       }
-    } catch (e) {
-      console.warn("Supabase customer orders query fallback:", e);
     }
 
     const memOrders = memoryOrders.filter(
       o => o.customerEmail?.toLowerCase() === session.email.toLowerCase()
     );
-
-    // Merge and deduplicate by id
-    const seenIds = new Set<string>();
-    const mergedOrders: Order[] = [];
-    for (const ord of [...customerOrders, ...memOrders]) {
-      if (!seenIds.has(ord.id)) {
-        seenIds.add(ord.id);
-        mergedOrders.push(ord);
-      }
-    }
-    customerOrders = mergedOrders;
-
-    res.json(customerOrders);
+    res.json(memOrders);
   });
 
   // Customer Login Endpoint (Isolated Personal Data Access with secure password hash checking)
@@ -2422,6 +2586,14 @@ function sanitizePhoneNumbers(obj: any): any {
       createdAt: new Date().toISOString()
     };
 
+    // Ensure user in Supabase auth and canonical customers_v2
+    if (dbPool) {
+      const v2Id = await ensureCustomerV2(cleanEmail, newCust.name, newCust.phone);
+      if (v2Id) {
+        newCust.id = v2Id;
+      }
+    }
+
     try {
       await supabase.from("customers").insert({
         id: newCust.id,
@@ -2436,7 +2608,7 @@ function sanitizePhoneNumbers(obj: any): any {
       });
       console.log(`Registered customer ${newCust.email} saved securely (hashed) to Supabase.`);
     } catch (e) {
-      console.warn("Supabase customer register failed, saving to local in-memory fallback:", e);
+      console.warn("Supabase customer register note:", e);
     }
 
     memoryCustomers.unshift(newCust);
@@ -2740,7 +2912,7 @@ function sanitizePhoneNumbers(obj: any): any {
   app.get(["/api/supabase/status", "/supabase/status"], async (req, res) => {
     try {
       const { count: productCount, error: pError } = await supabase.from("products").select("*", { count: "exact", head: true });
-      const { count: orderCount, error: oError } = await supabase.from("orders").select("*", { count: "exact", head: true });
+      const { count: orderCount, error: oError } = await supabase.from("orders_v2").select("*", { count: "exact", head: true });
       const { count: storeCount, error: sError } = await supabase.from("stores").select("*", { count: "exact", head: true });
 
       if (pError || oError || sError) {

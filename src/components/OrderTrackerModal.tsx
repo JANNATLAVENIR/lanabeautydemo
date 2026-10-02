@@ -1,15 +1,16 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Search, Phone, ShoppingBag, AlertCircle } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
-import { Order } from '../types';
+import { Order, HomepageSettings } from '../types';
 import { useI18n } from '../i18n';
 
 interface OrderTrackerModalProps {
   isOpen: boolean;
   onClose: () => void;
+  settings?: HomepageSettings;
 }
 
-export function OrderTrackerModal({ isOpen, onClose }: OrderTrackerModalProps) {
+export function OrderTrackerModal({ isOpen, onClose, settings }: OrderTrackerModalProps) {
   const { t } = useI18n();
   const [searchId, setSearchId] = useState('');
   const [loading, setLoading] = useState(false);
@@ -21,6 +22,10 @@ export function OrderTrackerModal({ isOpen, onClose }: OrderTrackerModalProps) {
   const [_loadingHistory, setLoadingHistory] = useState(false);
 
   const [dynamicWaNum, setDynamicWaNum] = useState<string>(() => {
+    if (settings) {
+      const num = settings.whatsappNumber || settings.contactInfo?.whatsappNumber || settings.contactInfo?.contactPhone;
+      if (num) return String(num).replace(/[^0-9]/g, '');
+    }
     try {
       const cached = localStorage.getItem('lana_site_settings_cache');
       if (cached) {
@@ -31,6 +36,13 @@ export function OrderTrackerModal({ isOpen, onClose }: OrderTrackerModalProps) {
     } catch {}
     return '';
   });
+
+  useEffect(() => {
+    if (settings) {
+      const num = settings.whatsappNumber || settings.contactInfo?.whatsappNumber || settings.contactInfo?.contactPhone;
+      if (num) setDynamicWaNum(String(num).replace(/[^0-9]/g, ''));
+    }
+  }, [settings]);
 
   useEffect(() => {
     const handleUpdate = (e: any) => {

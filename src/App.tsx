@@ -107,7 +107,7 @@ export default function App() {
         }
       }
 
-      if (Array.isArray(prodData) && prodData.length > 0) {
+      if (Array.isArray(prodData)) {
         setProducts(prodData);
       } else if (retryCount < 2 && (!prodRes || !prodRes.ok)) {
         // Cold start retry
@@ -135,7 +135,7 @@ export default function App() {
           catData = await catRes.json().catch(() => null);
         }
       }
-      if (Array.isArray(catData) && catData.length > 0) {
+      if (Array.isArray(catData)) {
         setCategories(catData);
       }
     } catch (error) {
@@ -161,11 +161,20 @@ export default function App() {
     const handleDataUpdated = () => {
       syncProducts();
     };
+    const syncWhenVisible = () => {
+      if (document.visibilityState === 'visible') syncProducts();
+    };
     window.addEventListener('lana_data_updated', handleDataUpdated);
+    window.addEventListener('focus', syncProducts);
+    window.addEventListener('online', syncProducts);
+    document.addEventListener('visibilitychange', syncWhenVisible);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener('lana_data_updated', handleDataUpdated);
+      window.removeEventListener('focus', syncProducts);
+      window.removeEventListener('online', syncProducts);
+      document.removeEventListener('visibilitychange', syncWhenVisible);
     };
   }, [syncProducts]);
 

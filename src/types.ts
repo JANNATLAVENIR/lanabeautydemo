@@ -149,6 +149,7 @@ export interface StoreContactSettings {
 }
 
 export interface HomepageSettings {
+  storeLogo?: string;
   heroFashionImage: string;
   heroFashionVideo?: string;
   heroFashionMediaType?: 'image' | 'video';

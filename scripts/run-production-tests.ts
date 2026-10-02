@@ -31,7 +31,8 @@ async function runTests() {
 
   // --- SETUP ENV CREDENTIALS FOR TESTING ---
   const adminEmail = process.env.ADMIN_EMAIL || "lanamarketplacehq@gmail.com";
-  const adminPass = process.env.ADMIN_PASSWORD || "@Maan6855";
+  const adminPass = process.env.ADMIN_PASSWORD;
+  if (!adminPass) throw new Error("ADMIN_PASSWORD is required to run the production test suite.");
 
   // ============================================================
   // TEST 1: ADMIN LOGIN WITH CORRECT CREDENTIALS
@@ -45,7 +46,7 @@ async function runTests() {
     });
     const data = await res.json();
     adminToken = data.token || "";
-    assert(res.ok && adminToken.startsWith("admin_sess_"), "Admin Auth Token Generation", `Session Token: ${adminToken.substring(0, 20)}...`);
+    assert(res.ok && adminToken.startsWith("lana_tok."), "Admin Auth Token Generation", `Session Token: ${adminToken.substring(0, 20)}...`);
   } catch (err: any) {
     assert(false, "Admin Auth Token Generation", err.message);
   }

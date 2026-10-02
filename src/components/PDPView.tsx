@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Heart, ShoppingBag, Plus, Minus, Star, ChevronLeft, ChevronRight, Check, X, ShieldCheck, Gift, Truck, RotateCcw, Share2, MessageCircle, Copy, Sparkles } from 'lucide-react';
-import { Product, ProductReview } from '../types';
+import { Product, ProductReview, HomepageSettings } from '../types';
 import { ProductCard } from './ProductCard';
 import { useI18n } from '../i18n';
 
@@ -17,6 +17,7 @@ export interface PDPViewProps {
   onBackToCatalog?: () => void;
   onNavigateToCatalog?: (category: string) => void;
   onSelectCategory?: (category: string) => void;
+  homepageSettings?: HomepageSettings;
 }
 
 export const PDPView: React.FC<PDPViewProps> = ({
@@ -30,7 +31,8 @@ export const PDPView: React.FC<PDPViewProps> = ({
   onNavigateToCart = () => {},
   onBackToCatalog,
   onNavigateToCatalog,
-  onSelectCategory
+  onSelectCategory,
+  homepageSettings
 }) => {
   const { t, localizeCategory } = useI18n();
   const mainBtnRef = useRef<HTMLButtonElement>(null);
@@ -75,6 +77,12 @@ export const PDPView: React.FC<PDPViewProps> = ({
   };
 
   const isWaActive = (() => {
+    if (homepageSettings) {
+      if (homepageSettings.whatsappEnabled === false) return false;
+      if (homepageSettings.contactInfo?.whatsappEnabled === false) return false;
+      const phone = (homepageSettings.whatsappNumber || homepageSettings.contactInfo?.whatsappNumber || homepageSettings.contactInfo?.contactPhone || '').replace(/[^0-9]/g, '');
+      return Boolean(phone);
+    }
     try {
       const cached = localStorage.getItem('lana_site_settings_cache');
       if (cached) {
@@ -95,14 +103,20 @@ export const PDPView: React.FC<PDPViewProps> = ({
     const msg = `Hello Maison LANA VIP Concierge,\n\nI am inquiring about:\n*${product.name}* (Price: $${priceVal.toLocaleString()})\nLink: ${url}\n\nPlease advise on availability and bespoke client consultation.`;
     
     let targetPhone = '';
-    try {
-      const cached = localStorage.getItem('lana_site_settings_cache');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        const phone = parsed.whatsappNumber || parsed.contactInfo?.whatsappNumber || parsed.contactInfo?.contactPhone;
-        if (phone) targetPhone = phone.replace(/[^0-9]/g, '');
-      }
-    } catch {}
+    if (homepageSettings) {
+      const phone = homepageSettings.whatsappNumber || homepageSettings.contactInfo?.whatsappNumber || homepageSettings.contactInfo?.contactPhone;
+      if (phone) targetPhone = String(phone).replace(/[^0-9]/g, '');
+    }
+    if (!targetPhone) {
+      try {
+        const cached = localStorage.getItem('lana_site_settings_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          const phone = parsed.whatsappNumber || parsed.contactInfo?.whatsappNumber || parsed.contactInfo?.contactPhone;
+          if (phone) targetPhone = phone.replace(/[^0-9]/g, '');
+        }
+      } catch {}
+    }
 
     if (!targetPhone) {
       alert('WhatsApp contact number is not configured yet.');

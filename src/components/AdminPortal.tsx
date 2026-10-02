@@ -656,39 +656,20 @@ export function AdminPortal({ isOpen, onClose, onProductsChanged }: AdminPortalP
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: adminEmail, password: adminPassword })
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.token) {
-          localStorage.setItem('lana_admin_token', data.token);
-          setAdminToken(data.token);
-          setIsAuthenticated(true);
-          setAdminPassword('');
-          setLoginError('');
-          return;
-        }
-      }
-    } catch (err) {
-      console.warn('Backend login endpoint unavailable, using static client fallback');
-    }
-
-    // Client-side fallback for Netlify static deployments
-    const cleanEmail = adminEmail.trim().toLowerCase();
-    const cleanPassword = adminPassword.trim();
-    const validPasswords = ['lana2026', 'admin123', 'lana123', 'Password123!', 'admin', 'lana'];
-
-    if (cleanEmail === 'lanamarketplacehq@gmail.com' || cleanEmail.includes('admin') || cleanEmail.includes('lana') || cleanEmail.length > 3) {
-      if (validPasswords.includes(cleanPassword) || cleanPassword.length >= 4) {
-        const fallbackToken = 'admin_sess_static_' + Date.now();
-        localStorage.setItem('lana_admin_token', fallbackToken);
-        setAdminToken(fallbackToken);
-        setIsAuthenticated(true);
-        setAdminPassword('');
-        setLoginError('');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success || !data.token) {
+        setLoginError(data.error || 'Invalid email or password.');
         return;
       }
-    }
 
-    setLoginError('Invalid credentials. Password format e.g. "lana2026" or "admin123".');
+      localStorage.setItem('lana_admin_token', data.token);
+      setAdminToken(data.token);
+      setIsAuthenticated(true);
+      setAdminPassword('');
+      setLoginError('');
+    } catch (err) {
+      setLoginError('Admin login service is unavailable. Please try again later.');
+    }
   };
 
   const handleAssignStoreToItem = async (orderId: string, productId: string, storeId: string) => {
@@ -1095,25 +1076,6 @@ export function AdminPortal({ isOpen, onClose, onProductsChanged }: AdminPortalP
   };
 
   const onSaveSettingsFromDeptManager = async (settings: any) => {
-    // Instant optimistic update in React state so UI updates in 0ms
-    setHomepageSettingsFull(settings);
-    if (settings.heroFashionImage !== undefined) setHeroFashionImg(settings.heroFashionImage);
-    if (settings.heroFashionTitle !== undefined) setHeroFashionTitle(settings.heroFashionTitle);
-    if (settings.heroFashionEyebrow !== undefined) setHeroFashionEyebrow(settings.heroFashionEyebrow);
-    if (settings.heroFashionCta !== undefined) setHeroFashionCta(settings.heroFashionCta);
-    if (settings.heroFashionImagePosition !== undefined) setHeroFashionImgPos(settings.heroFashionImagePosition);
-    if (settings.heroFashionOverlayOpacity !== undefined) setHeroFashionOverlay(settings.heroFashionOverlayOpacity);
-    if (settings.heroFashionActive !== undefined) setHeroFashionActive(settings.heroFashionActive);
-    
-    if (settings.heroBeautyImage !== undefined) setHeroBeautyImg(settings.heroBeautyImage);
-    if (settings.heroBeautyTitle !== undefined) setHeroBeautyTitle(settings.heroBeautyTitle);
-    if (settings.heroBeautyEyebrow !== undefined) setHeroBeautyEyebrow(settings.heroBeautyEyebrow);
-    if (settings.heroBeautyCta !== undefined) setHeroBeautyCta(settings.heroBeautyCta);
-    if (settings.heroBeautyImagePosition !== undefined) setHeroBeautyImgPos(settings.heroBeautyImagePosition);
-    if (settings.heroBeautyOverlayOpacity !== undefined) setHeroBeautyOverlay(settings.heroBeautyOverlayOpacity);
-    if (settings.heroBeautyActive !== undefined) setHeroBeautyActive(settings.heroBeautyActive);
-    if (settings.additionalBanners !== undefined) setAdditionalBanners(settings.additionalBanners);
-
     try {
       const token = adminToken || localStorage.getItem('lana_admin_token') || '';
       const res = await fetch('/api/homepage-settings', {
@@ -1126,15 +1088,32 @@ export function AdminPortal({ isOpen, onClose, onProductsChanged }: AdminPortalP
       });
 
       if (res.ok) {
+        setHomepageSettingsFull(settings);
+        if (settings.heroFashionImage !== undefined) setHeroFashionImg(settings.heroFashionImage);
+        if (settings.heroFashionTitle !== undefined) setHeroFashionTitle(settings.heroFashionTitle);
+        if (settings.heroFashionEyebrow !== undefined) setHeroFashionEyebrow(settings.heroFashionEyebrow);
+        if (settings.heroFashionCta !== undefined) setHeroFashionCta(settings.heroFashionCta);
+        if (settings.heroFashionImagePosition !== undefined) setHeroFashionImgPos(settings.heroFashionImagePosition);
+        if (settings.heroFashionOverlayOpacity !== undefined) setHeroFashionOverlay(settings.heroFashionOverlayOpacity);
+        if (settings.heroFashionActive !== undefined) setHeroFashionActive(settings.heroFashionActive);
+        if (settings.heroBeautyImage !== undefined) setHeroBeautyImg(settings.heroBeautyImage);
+        if (settings.heroBeautyTitle !== undefined) setHeroBeautyTitle(settings.heroBeautyTitle);
+        if (settings.heroBeautyEyebrow !== undefined) setHeroBeautyEyebrow(settings.heroBeautyEyebrow);
+        if (settings.heroBeautyCta !== undefined) setHeroBeautyCta(settings.heroBeautyCta);
+        if (settings.heroBeautyImagePosition !== undefined) setHeroBeautyImgPos(settings.heroBeautyImagePosition);
+        if (settings.heroBeautyOverlayOpacity !== undefined) setHeroBeautyOverlay(settings.heroBeautyOverlayOpacity);
+        if (settings.heroBeautyActive !== undefined) setHeroBeautyActive(settings.heroBeautyActive);
+        if (settings.additionalBanners !== undefined) setAdditionalBanners(settings.additionalBanners);
         setActionSuccess('Department placement & copy successfully saved!');
         // Refresh only homepage settings in background without blocking or full loading spinner
         refreshHomepageSettingsSilently();
       } else {
         const data = await res.json().catch(() => ({}));
-        setActionError(data.error || 'Failed to save settings');
+        throw new Error(data.error || 'Failed to save settings');
       }
     } catch (err: any) {
       setActionError(err.message || 'Error saving settings');
+      throw err;
     }
   };
 

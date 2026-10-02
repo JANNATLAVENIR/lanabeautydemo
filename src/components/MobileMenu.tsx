@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, ChevronRight, ArrowLeft, Globe, MessageSquare, Heart, User, Home } from 'lucide-react';
-import { ActiveView } from '../types';
+import { ActiveView, HomepageSettings } from '../types';
 import { useI18n } from '../i18n';
 
 export interface MobileMenuProps {
@@ -14,6 +14,7 @@ export interface MobileMenuProps {
   onOpenAccount: () => void;
   onOpenCountrySelector: () => void;
   selectedCountryName?: string;
+  settings?: HomepageSettings;
 }
 
 type MenuLevel = 'root' | 'fashion' | 'fashion-women' | 'fashion-men' | 'beauty' | 'services';
@@ -27,12 +28,14 @@ export const MobileMenu: React.FC<MobileMenuProps> = ({
   onOpenWishlist,
   onOpenAccount,
   onOpenCountrySelector,
-  selectedCountryName = 'International (English)'
+  selectedCountryName = 'International (English)',
+  settings
 }) => {
   const { t } = useI18n();
   const [level, setLevel] = useState<MenuLevel>('root');
   const [history, setHistory] = useState<MenuLevel[]>(['root']);
   const [dynamicSettings, setDynamicSettings] = useState<any>(() => {
+    if (settings) return settings;
     try {
       const cached = localStorage.getItem('lana_site_settings_cache');
       return cached ? JSON.parse(cached) : null;
@@ -41,7 +44,14 @@ export const MobileMenu: React.FC<MobileMenuProps> = ({
     }
   });
 
-  React.useEffect(() => {
+  // Reactive sync with parent settings
+  useEffect(() => {
+    if (settings) {
+      setDynamicSettings(settings);
+    }
+  }, [settings]);
+
+  useEffect(() => {
     const handleUpdate = (e: any) => {
       if (e.detail) setDynamicSettings(e.detail);
     };
@@ -49,16 +59,18 @@ export const MobileMenu: React.FC<MobileMenuProps> = ({
     return () => window.removeEventListener('lana_settings_updated', handleUpdate);
   }, []);
 
+  const activeSettings = settings || dynamicSettings || {};
+
   const isWaActive = (() => {
-    if (dynamicSettings?.whatsappEnabled === false) return false;
-    if (dynamicSettings?.contactInfo?.whatsappEnabled === false) return false;
-    const raw = dynamicSettings?.whatsappNumber || dynamicSettings?.contactInfo?.whatsappNumber || dynamicSettings?.contactInfo?.contactPhone || '';
+    if (activeSettings?.whatsappEnabled === false) return false;
+    if (activeSettings?.contactInfo?.whatsappEnabled === false) return false;
+    const raw = activeSettings?.whatsappNumber || activeSettings?.contactInfo?.whatsappNumber || activeSettings?.contactInfo?.contactPhone || '';
     return Boolean(String(raw).replace(/[^0-9]/g, ''));
   })();
 
-  const rawWaNum = dynamicSettings?.whatsappNumber || dynamicSettings?.contactInfo?.whatsappNumber || dynamicSettings?.contactInfo?.contactPhone || '';
+  const rawWaNum = activeSettings?.whatsappNumber || activeSettings?.contactInfo?.whatsappNumber || activeSettings?.contactInfo?.contactPhone || '';
   const cleanWaNum = String(rawWaNum).replace(/[^0-9]/g, '');
-  const socialLinks = dynamicSettings?.socialLinks || {};
+  const socialLinks = activeSettings?.socialLinks || {};
 
   const navigateToLevel = (newLevel: MenuLevel) => {
     setHistory((prev) => [...prev, newLevel]);

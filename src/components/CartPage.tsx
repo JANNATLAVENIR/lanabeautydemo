@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Trash2, Plus, Minus, ArrowRight, ShieldCheck, Gift, ShoppingBag, ArrowLeft } from 'lucide-react';
-import { Product } from '../types';
+import { Product, HomepageSettings } from '../types';
 import { CartItem } from './CartDrawer';
 import { useI18n } from '../i18n';
 
@@ -13,6 +13,7 @@ interface CartPageProps {
   onProceedToCheckout: () => void;
   onContinueShopping: () => void;
   onViewProduct?: (product: Product) => void;
+  homepageSettings?: HomepageSettings;
 }
 
 export const CartPage: React.FC<CartPageProps> = ({
@@ -23,7 +24,8 @@ export const CartPage: React.FC<CartPageProps> = ({
   onClearCart: _onClearCart,
   onProceedToCheckout,
   onContinueShopping,
-  onViewProduct
+  onViewProduct,
+  homepageSettings
 }) => {
   const { t, localizeCategory } = useI18n();
   const activeCart = items || cart || [];
@@ -314,16 +316,24 @@ export const CartPage: React.FC<CartPageProps> = ({
               {(() => {
                 let targetPhone = '';
                 let isWaEnabled = true;
-                try {
-                  const cached = localStorage.getItem('lana_site_settings_cache');
-                  if (cached) {
-                    const parsed = JSON.parse(cached);
-                    if (parsed.whatsappEnabled === false) isWaEnabled = false;
-                    if (parsed.contactInfo?.whatsappEnabled === false) isWaEnabled = false;
-                    const p = parsed.whatsappNumber || parsed.contactInfo?.whatsappNumber || parsed.contactInfo?.contactPhone;
-                    if (p) targetPhone = String(p).replace(/[^0-9]/g, '');
-                  }
-                } catch {}
+                if (homepageSettings) {
+                  if (homepageSettings.whatsappEnabled === false) isWaEnabled = false;
+                  if (homepageSettings.contactInfo?.whatsappEnabled === false) isWaEnabled = false;
+                  const p = homepageSettings.whatsappNumber || homepageSettings.contactInfo?.whatsappNumber || homepageSettings.contactInfo?.contactPhone;
+                  if (p) targetPhone = String(p).replace(/[^0-9]/g, '');
+                }
+                if (!targetPhone) {
+                  try {
+                    const cached = localStorage.getItem('lana_site_settings_cache');
+                    if (cached) {
+                      const parsed = JSON.parse(cached);
+                      if (parsed.whatsappEnabled === false) isWaEnabled = false;
+                      if (parsed.contactInfo?.whatsappEnabled === false) isWaEnabled = false;
+                      const p = parsed.whatsappNumber || parsed.contactInfo?.whatsappNumber || parsed.contactInfo?.contactPhone;
+                      if (p) targetPhone = String(p).replace(/[^0-9]/g, '');
+                    }
+                  } catch {}
+                }
                 if (!isWaEnabled || !targetPhone) return null;
                 return (
                   <a

@@ -158,7 +158,8 @@ async function runE2EJourney() {
     // STEP 7: ADMIN AUTHENTICATION
     // ------------------------------------------------------------
     const adminEmail = process.env.ADMIN_EMAIL || "lanamarketplacehq@gmail.com";
-    const adminPass = process.env.ADMIN_PASSWORD || "@Maan6855";
+    const adminPass = process.env.ADMIN_PASSWORD;
+    if (!adminPass) throw new Error("ADMIN_PASSWORD is required to run the E2E journey test.");
 
     const adminLogRes = await fetch(`${BASE_URL}/api/admin/login`, {
       method: "POST",
@@ -169,7 +170,7 @@ async function runE2EJourney() {
     const adminToken = adminLogData.token || "";
 
     assert(
-      adminLogRes.ok && adminToken.startsWith("admin_sess_"),
+      adminLogRes.ok && adminToken.startsWith("lana_tok."),
       "7. Atelier Admin Authentication",
       `Admin Session Established: ${adminToken.substring(0, 18)}...`
     );

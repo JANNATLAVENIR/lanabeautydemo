@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { User, Package, Heart, MapPin, CreditCard, Sparkles, MessageSquare, ArrowRight, CheckCircle2, Clock, Shield } from 'lucide-react';
-import { Order, Product } from '../types';
+import { Order, Product, HomepageSettings } from '../types';
 
 interface AccountPortalProps {
   orders?: Order[];
@@ -12,6 +12,7 @@ interface AccountPortalProps {
   onOpenAdmin?: () => void;
   onNavigateHome?: () => void;
   onOpenWishlist?: () => void;
+  settings?: HomepageSettings;
 }
 
 export const AccountPortal: React.FC<AccountPortalProps> = ({
@@ -20,7 +21,8 @@ export const AccountPortal: React.FC<AccountPortalProps> = ({
   wishlistItems = [],
   onSelectProduct = (_product: Product) => {},
   onNavigateToCatalog = () => {},
-  onOpenAdmin = () => {}
+  onOpenAdmin = () => {},
+  settings
 }) => {
   const [activeTab, setActiveTab] = useState<'orders' | 'wishlist' | 'profile' | 'addresses' | 'concierge'>('orders');
   const safeWishlist = wishlistProducts.length > 0 ? wishlistProducts : wishlistItems;
