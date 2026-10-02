@@ -8,10 +8,10 @@
 ## Database setup
 Run SQL against the same Supabase project used by the deployed site.
 - If `public.products` already exists, run `supabase/migrations/20261002000000_shared_catalog_settings.sql` to add the shared catalog/settings schema.
-- For a fresh project, run `supabase-schema.sql` first, then `supabase/migrations/20261002000000_shared_catalog_settings.sql`.
-- Do not run `supabase/migrations/20260401000000_production_hardening.sql` yet. It currently expects product columns created by the later migration and its new reviews schema conflicts with the legacy reviews table in `supabase-schema.sql`.
+- For a fresh project, run `supabase-schema.sql` first.
+- After the shared catalog migration has succeeded, run `supabase/migrations/20260401000000_production_hardening.sql` to create the canonical checkout tables and harden database access. It now adds the product columns it needs, preserves the legacy review API columns, and creates the promo-code table if it is missing.
 
-The production-hardening migration needs a compatibility fix before it is safe to apply. The shared catalog migration is separate from the base schema.
+The migrations are separate SQL scripts; run each complete file in the order above against the Supabase project used by Vercel.
 
 ## Deployment environment
 Set these for the Vercel Production environment, then redeploy:

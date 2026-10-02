@@ -22,7 +22,7 @@ CREATE OR REPLACE FUNCTION public.has_admin_role(required_role TEXT)
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog, public, pg_temp
 AS $$
 DECLARE
   v_role TEXT;
@@ -59,8 +59,7 @@ END;
 $$;
 
 REVOKE EXECUTE ON FUNCTION public.has_admin_role(TEXT) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION public.has_admin_role(TEXT) FROM anon;
-GRANT EXECUTE ON FUNCTION public.has_admin_role(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.has_admin_role(TEXT) TO anon, authenticated;
 
 -- 2. CUSTOMERS TABLE LINKED TO auth.users
 CREATE TABLE IF NOT EXISTS public.customers_v2 (
@@ -94,7 +93,7 @@ CREATE OR REPLACE FUNCTION public.enforce_customer_profile_update()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog, public, pg_temp
 AS $$
 BEGIN
   NEW.user_id := OLD.user_id;
@@ -235,6 +234,26 @@ CREATE TRIGGER tr_orders_v2_protection
   EXECUTE FUNCTION public.enforce_order_protection();
 
 -- 4. PRODUCTS PRIVILEGE REMEDIATION
+ALTER TABLE public.products
+  ADD COLUMN IF NOT EXISTS brand TEXT DEFAULT 'LANA',
+  ADD COLUMN IF NOT EXISTS sub_category TEXT,
+  ADD COLUMN IF NOT EXISTS department TEXT DEFAULT 'Fashion',
+  ADD COLUMN IF NOT EXISTS gender TEXT,
+  ADD COLUMN IF NOT EXISTS original_price NUMERIC,
+  ADD COLUMN IF NOT EXISTS secondary_image TEXT,
+  ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS sizes JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS colors JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS details JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS ingredients TEXT,
+  ADD COLUMN IF NOT EXISTS savoir_faire TEXT,
+  ADD COLUMN IF NOT EXISTS rating NUMERIC DEFAULT 5.0,
+  ADD COLUMN IF NOT EXISTS review_count INTEGER DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS is_new BOOLEAN DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS is_bestseller BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS is_exclusive BOOLEAN DEFAULT FALSE;
+
 REVOKE ALL ON public.products FROM anon;
 REVOKE ALL ON public.products FROM authenticated;
 DROP POLICY IF EXISTS "Allow all access to products" ON public.products;
@@ -289,13 +308,15 @@ DROP POLICY IF EXISTS "Public write orders" ON public.orders;
 
 -- 6. REVIEWS HARDENING & OWNERSHIP ENFORCEMENT
 CREATE TABLE IF NOT EXISTS public.reviews (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id UUID NOT NULL REFERENCES public.customers_v2(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  customer_id UUID REFERENCES public.customers_v2(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   product_id TEXT NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
+  author_name TEXT NOT NULL DEFAULT 'Anonymous Patron',
   rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
   title TEXT,
   comment TEXT,
+  verified_purchase BOOLEAN DEFAULT TRUE,
   is_approved BOOLEAN DEFAULT FALSE,
   moderated_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   moderated_at TIMESTAMPTZ,
@@ -303,8 +324,19 @@ CREATE TABLE IF NOT EXISTS public.reviews (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+ALTER TABLE public.reviews
+  ADD COLUMN IF NOT EXISTS customer_id UUID REFERENCES public.customers_v2(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS author_name TEXT DEFAULT 'Anonymous Patron',
+  ADD COLUMN IF NOT EXISTS verified_purchase BOOLEAN DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS is_approved BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS moderated_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS moderated_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
 ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow public read access to reviews" ON public.reviews;
 DROP POLICY IF EXISTS "Public can read approved reviews" ON public.reviews;
 CREATE POLICY "Public can read approved reviews"
   ON public.reviews FOR SELECT
@@ -341,7 +373,6 @@ CREATE POLICY "Users can update own reviews"
   )
   WITH CHECK (
     user_id = auth.uid()
-    AND customer_id = customer_id
     AND EXISTS (
       SELECT 1 FROM public.customers_v2 c
       WHERE c.id = customer_id
@@ -366,7 +397,7 @@ CREATE OR REPLACE FUNCTION public.enforce_review_protection()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog, public, pg_temp
 AS $$
 BEGIN
   NEW.user_id := OLD.user_id;
@@ -391,7 +422,17 @@ CREATE TRIGGER tr_reviews_protect_fields
   EXECUTE FUNCTION public.enforce_review_protection();
 
 -- 7. PROMO CODES RLS & RESTRICTION
-ALTER TABLE IF EXISTS public.promo_codes ENABLE ROW LEVEL SECURITY;
+CREATE TABLE IF NOT EXISTS public.promo_codes (
+  code TEXT PRIMARY KEY,
+  discount_percent NUMERIC DEFAULT 0,
+  discount_amount NUMERIC DEFAULT 0,
+  min_spend NUMERIC DEFAULT 0,
+  is_active BOOLEAN DEFAULT TRUE,
+  expires_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.promo_codes ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.promo_codes FROM anon;
 REVOKE ALL ON public.promo_codes FROM authenticated;
 
