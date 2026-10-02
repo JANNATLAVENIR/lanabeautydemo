@@ -161,19 +161,22 @@ export default function App() {
     const handleDataUpdated = () => {
       syncProducts();
     };
+    const syncOnResume = () => {
+      void syncProducts();
+    };
     const syncWhenVisible = () => {
       if (document.visibilityState === 'visible') syncProducts();
     };
     window.addEventListener('lana_data_updated', handleDataUpdated);
-    window.addEventListener('focus', syncProducts);
-    window.addEventListener('online', syncProducts);
+    window.addEventListener('focus', syncOnResume);
+    window.addEventListener('online', syncOnResume);
     document.addEventListener('visibilitychange', syncWhenVisible);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener('lana_data_updated', handleDataUpdated);
-      window.removeEventListener('focus', syncProducts);
-      window.removeEventListener('online', syncProducts);
+      window.removeEventListener('focus', syncOnResume);
+      window.removeEventListener('online', syncOnResume);
       document.removeEventListener('visibilitychange', syncWhenVisible);
     };
   }, [syncProducts]);

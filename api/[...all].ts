@@ -1,4 +1,4 @@
-import { app } from "../server";
+const { app } = require("../server-runtime.cjs");
 
 export default function handler(req: any, res: any) {
   res.setHeader("Access-Control-Allow-Credentials", "true");
